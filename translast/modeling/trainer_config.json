@@ -1,0 +1,14 @@
+{
+    "seed": 3469,
+    "batch_size": 128,
+    "mini_batch_size": 64,
+    "num_train_batches": 32,
+    "num_eval_batches": 4,
+    "learning_rate": 5e-5,
+    "n_epochs": 25,
+    "warmup": 0.1,
+    "save_steps": 100,
+    "total_steps": 1000,
+    "save_frequency": 500,
+    "data_parallel": false
+}
