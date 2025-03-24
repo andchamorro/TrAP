@@ -2,11 +2,10 @@ import os
 import math
 import numpy as np
 import typer
-from typing_extensions import Annotated
 import json
-import argparse
 from loguru import logger
 from tqdm import tqdm
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -16,6 +15,7 @@ from pathlib import Path
 
 from transformers import PreTrainedTokenizerFast, default_data_collator, get_scheduler
 from accelerate import Accelerator
+from accelerate.utils import ProjectConfiguration
 from tokenizers import processors
 from datasets import load_from_disk
 
@@ -114,15 +114,17 @@ class Trainer:
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
         self.config.num_training_steps = self.config.num_train_epochs * len(train_dataloader)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=config.learning_rate)
-        self.processing_class=processing_class,
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
+        self.processing_class=processing_class
         self.device = device
+        self.accelerator = Accelerator(project_config = ProjectConfiguration(project_dir = self.config.output_dir, total_limit=5))
         self.lr_scheduler = get_scheduler(
             "linear",
             optimizer=self.optimizer,
             num_warmup_steps=0,
             num_training_steps=config.num_training_steps,
             )
+        self.global_step = 0
 
     def train(self, data_parallel=False):
         """
@@ -136,13 +138,16 @@ class Trainer:
             model_file (str, optional): Path to a saved model file to load. Defaults to None.
             data_parallel (bool, optional): Whether to use Data Parallelism with Multi-GPU. Defaults to False.
         """
-        model = self.model.to(self.device)
+        self.model = self.model.to(self.device)
         if data_parallel:  # If Multi-GPU
-            model = nn.DataParallel(model)
-        self.accelerator = Accelerator()
-        model, self.optimizer, self.train_dataloader , self.eval_dataloader = self.accelerator.prepare(
-            model, self.optimizer, self.train_dataloader , self.eval_dataloader
+            self.model = nn.DataParallel(self.model)
+        self.model, self.optimizer, self.train_dataloader , self.eval_dataloader = self.accelerator.prepare(
+            self.model, self.optimizer, self.train_dataloader , self.eval_dataloader
         )
+        # Save the starting state
+        self.save_checkpoint()
+
+        self.model.to(self.accelerator.device)
 
         for e in range(self.config.num_train_epochs):
             loss_sum = 0.  # the sum of iteration losses to get average loss in every epoch
@@ -150,7 +155,7 @@ class Trainer:
             
             self.model.train()  # train mode
             for train_step, batch in enumerate(progress_bar):
-                outputs = model(**batch)
+                outputs = self.model(**batch)
                 loss = outputs['loss']
                 self.accelerator.backward(loss)
                 
@@ -159,13 +164,15 @@ class Trainer:
                 self.optimizer.zero_grad()
                 progress_bar.set_description('Iter (loss=%5.3f)' % loss.item())
                 loss_sum += loss.item()
+
+                self.global_step += 1
         
             # Evaluation
-            model.eval()
+            self.model.eval()
             losses = []
             for eval_step, batch in enumerate(self.eval_dataloader):
                 with torch.no_grad():
-                    outputs = model(**batch)
+                    outputs = self.model(**batch)
 
                 loss = outputs['loss']
                 losses.append(self.accelerator.gather(loss.repeat(self.config.batch_size)))
@@ -176,12 +183,11 @@ class Trainer:
                 perplexity = math.exp(torch.mean(losses))
             except OverflowError:
                 perplexity = float("inf")
-
-            print(f">>> Epoch {e}: Perplexity: {perplexity}")
-            print('Epoch %d/%d : Average Loss %5.3f' % (e + 1, self.config.n_epochs, loss_sum / (train_step + 1)))
+            
+            logger.info('Epoch %d/%d : Average Loss %5.3f Perplexity: %5.3f' % (e + 1, self.config.num_train_epochs, loss_sum / (train_step + 1), perplexity))
             # Save and upload
             self.accelerator.wait_for_everyone()
-            self.save()
+            self.save_checkpoint()
 
     def eval(self, evaluate, eval_dataloader, data_parallel=True):
         """
@@ -211,16 +217,38 @@ class Trainer:
             results.append(result)
             iter_tqdm.set_description('Iteraction (acc=%5.3f)' % accuracy)
         return results
+    
+    def save_checkpoint(self):
+        if self.accelerator.is_main_process:
+            # Save model checkpoint
+            checkpoint_folder = f"checkpoint-{self.global_step}"
 
-    def save(self):
+            output_dir = os.path.join(self.config.output_dir, checkpoint_folder)
+            self.save_model(output_dir)
+
+            # Save the state
+            torch.save(self.optimizer.state_dict(), os.path.join(output_dir, "AdamW"))
+            self.accelerator.save_state(os.path.join(output_dir, "accelerator"))
+
+
+    def save_model(self, output_dir: Optional[str] = None, state_dict=None):
         """
         Save current model
         """
-        if os.path.isdir(self.config.output_dir) and self.config.do_train and not self.config.overwrite_output_dir:
+        output_dir = output_dir if output_dir is not None else self.config.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"Saving model checkpoint to {output_dir}")
+
+        if state_dict is None:
             unwrapped_model = self.accelerator.unwrap_model(self.model)
-            unwrapped_model.save_pretrained(self.config.output_dir, save_function=self.accelerator.save)
-            if self.accelerator.is_main_process:
-                self.processing_class.save_pretrained(self.config.output_dir)
+            state_dict = unwrapped_model.state_dict()
+        torch.save(state_dict, os.path.join(output_dir, "pytorch_model.bin"))
+
+        if self.processing_class is not None:
+            self.processing_class.save_pretrained(output_dir)
+        
+        # Good practice: save your training arguments together with the trained model
+        torch.save(self.config, os.path.join(output_dir, "training_config.bin"))
 
 @app.command()
 def main(

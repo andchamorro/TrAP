@@ -8,6 +8,10 @@
 /notebooks/
 !/notebooks/*.ipynb
 
+# Just the finals model
+/models/
+!/models/finals
+
 # Mac OS-specific storage files
 .DS_Store
 
