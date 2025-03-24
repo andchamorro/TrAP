@@ -1,46 +1,82 @@
 import os
+import math
 import numpy as np
 import typer
+from typing_extensions import Annotated
 import json
+import argparse
 from loguru import logger
 from tqdm import tqdm
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader
 from pathlib import Path
 
-from translast.modeling.albert import AlbertConfig, AlbertModel
-from translast.config import MODELS_DIR, PROCESSED_DATA_DIR
+from transformers import PreTrainedTokenizerFast, default_data_collator, get_scheduler
+from accelerate import Accelerator
+from tokenizers import processors
+from datasets import load_from_disk
+
+from translast.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
+from translast.loaders.tokenizer import WholeKmerMaskingDataCollator
+from translast.config.config import MODELS_CONFIG_DIR, MODELS_DIR, PROCESSED_DATA_DIR
 
 app = typer.Typer()
 
+debug_mode = False
+def debug_callback(debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")):
+    """
+    Callback function to handle the debug flag.
+    """
+    global debug_mode
+    if debug:
+        typer.echo("Debug mode enabled")
+        debug_mode = True
+
+def try_mkdir(dir_name):
+    # Save the tokenizer
+    try:
+        os.makedirs(dir_name)
+    except FileExistsError:
+            # directory already exists
+            pass
 class TrainerConfig:
-    def __init__(self, seed: int = 3469, 
-                 batch_size: int = 128,
-                 mini_batch_size: int = 128,
+    def __init__(self, seed: int = 3469,
                  num_train_batches: int = 32,
                  num_eval_batches: int = 4,
                  learning_rate: float = 5e-5,
-                 n_epochs: int = 25,
+                 weight_decay: float = 0.0,
+                 num_train_epochs: int = 25,
                  warmup: float = 0.1, 
                  save_steps: int = 100,
                  total_steps: int = 1000,
                  save_frequency: int = 500,
+                 max_train_samples: int = None,
+                 evaluation_strategy: str = "epoch",
+                 save_strategy: str = "epoch",
+                 per_device_train_batch_size: int = 16,
+                 per_device_eval_batch_size: int = 16,
                  data_parallel: bool = False):
         
         self.seed = seed
-        self.batch_size = batch_size
-        self.mini_batch_size = mini_batch_size
         self.num_train_batches = num_train_batches
         self.num_eval_batches = num_eval_batches
         self.learning_rate = learning_rate
-        self.n_epochs = n_epochs
+        self.weight_decay = weight_decay
+        self.num_train_epochs = num_train_epochs
         self.warmup = warmup
         self.save_steps = save_steps
         self.total_steps = total_steps
         self.save_frequency = save_frequency
+        self.max_train_samples = max_train_samples
+        self.evaluation_strategy = evaluation_strategy
+        self.save_strategy = save_strategy
+        self.per_device_train_batch_size = per_device_train_batch_size
+        self.per_device_eval_batch_size = per_device_eval_batch_size
         self.data_parallel = data_parallel
+
     @classmethod
     def from_json(cls, file):
         return cls(**json.load(open(file, "r")))
@@ -72,14 +108,23 @@ class Trainer:
             Saves the current model state.
     """
 
-    def __init__(self, config, model, data_iter, device):
+    def __init__(self, config, model, train_dataloader, eval_dataloader, processing_class, device):
         self.config = config
         self.model = model
-        self.data_iter = data_iter
+        self.train_dataloader = train_dataloader
+        self.eval_dataloader = eval_dataloader
+        self.config.num_training_steps = self.config.num_train_epochs * len(train_dataloader)
         self.optimizer = optim.Adam(self.model.parameters(), lr=config.learning_rate)
+        self.processing_class=processing_class,
         self.device = device
+        self.lr_scheduler = get_scheduler(
+            "linear",
+            optimizer=self.optimizer,
+            num_warmup_steps=0,
+            num_training_steps=config.num_training_steps,
+            )
 
-    def train(self, loss_function, model_file=None, data_parallel=False):
+    def train(self, data_parallel=False):
         """
         Train Loop
 
@@ -91,41 +136,54 @@ class Trainer:
             model_file (str, optional): Path to a saved model file to load. Defaults to None.
             data_parallel (bool, optional): Whether to use Data Parallelism with Multi-GPU. Defaults to False.
         """
-        self.model.train()  # train mode
-        self.load(model_file)
         model = self.model.to(self.device)
         if data_parallel:  # If Multi-GPU
             model = nn.DataParallel(model)
+        self.accelerator = Accelerator()
+        model, self.optimizer, self.train_dataloader , self.eval_dataloader = self.accelerator.prepare(
+            model, self.optimizer, self.train_dataloader , self.eval_dataloader
+        )
 
-        global_step = 0  # global iteration steps regardless of epochs
-        for e in range(self.config.n_epochs):
+        for e in range(self.config.num_train_epochs):
             loss_sum = 0.  # the sum of iteration losses to get average loss in every epoch
-            iter_bar = tqdm(self.data_iter, desc='Iter (loss=X.XXX)')
-            for i, batch in enumerate(iter_bar):
-                batch = [t.to(self.device) for t in batch]
-
-                self.optimizer.zero_grad()
-                loss = loss_function(model, batch, global_step).mean()  # Average of the Data Parallelism
-                loss.backward()
+            progress_bar = tqdm(self.train_dataloader, desc='Iter (loss=X.XXX)')
+            
+            self.model.train()  # train mode
+            for train_step, batch in enumerate(progress_bar):
+                outputs = model(**batch)
+                loss = outputs['loss']
+                self.accelerator.backward(loss)
+                
                 self.optimizer.step()
-
-                global_step += 1
+                self.lr_scheduler.step()
+                self.optimizer.zero_grad()
+                progress_bar.set_description('Iter (loss=%5.3f)' % loss.item())
                 loss_sum += loss.item()
-                iter_bar.set_description('Iter (loss=%5.3f)' % loss.item())
+        
+            # Evaluation
+            model.eval()
+            losses = []
+            for eval_step, batch in enumerate(self.eval_dataloader):
+                with torch.no_grad():
+                    outputs = model(**batch)
 
-                if global_step % self.config.save_steps == 0:  # save
-                    self.save(global_step)
+                loss = outputs['loss']
+                losses.append(self.accelerator.gather(loss.repeat(self.config.batch_size)))
 
-                if self.config.total_steps and self.config.total_steps < global_step:
-                    print('Epoch %d/%d : Average Loss %5.3f' % (e + 1, self.config.n_epochs, loss_sum / (i + 1)))
-                    print('The Total Steps have been reached.')
-                    self.save(global_step)  # save and finish when global_steps reach total_steps
-                    return
+            losses = torch.cat(losses)
+            losses = losses[: len(self.eval_dataloader)]
+            try:
+                perplexity = math.exp(torch.mean(losses))
+            except OverflowError:
+                perplexity = float("inf")
 
-            print('Epoch %d/%d : Average Loss %5.3f' % (e + 1, self.config.n_epochs, loss_sum / (i + 1)))
-        self.save(global_step)
+            print(f">>> Epoch {e}: Perplexity: {perplexity}")
+            print('Epoch %d/%d : Average Loss %5.3f' % (e + 1, self.config.n_epochs, loss_sum / (train_step + 1)))
+            # Save and upload
+            self.accelerator.wait_for_everyone()
+            self.save()
 
-    def eval(self, evaluate, model_file, data_parallel=True):
+    def eval(self, evaluate, eval_dataloader, data_parallel=True):
         """
         Evaluation Loop
 
@@ -140,13 +198,12 @@ class Trainer:
             list: A list of prediction results.
         """
         self.model.eval()  # evaluation mode
-        self.load(model_file)
         model = self.model.to(self.device)
         if data_parallel:  # use Data Parallelism with Multi-GPU
             model = nn.DataParallel(model)
 
         results = []  # prediction results
-        iter_tqdm = tqdm(self.data_iter, desc='Iteraction (loss=X.XXX)')
+        iter_tqdm = tqdm(eval_dataloader, desc='Iteraction (loss=X.XXX)')
         for batch in iter_tqdm:
             batch = [t.to(self.device) for t in batch]
             with torch.no_grad():  # Not calule the gradient
@@ -155,128 +212,120 @@ class Trainer:
             iter_tqdm.set_description('Iteraction (acc=%5.3f)' % accuracy)
         return results
 
-    def load(self, model_file):
-        """
-        Load saved model or pretrained transformer (a part of model)
-
-        Args:
-            model_file (str): Path to the saved model file.
-        """
-        if model_file:
-            print('Loading the model from', model_file)
-            self.model.load_state_dict(torch.load(model_file))
-
-    def save(self, i):
+    def save(self):
         """
         Save current model
-
-        Args:
-            i (int): The current global step.
         """
         if os.path.isdir(self.config.output_dir) and self.config.do_train and not self.config.overwrite_output_dir:
-            torch.save(self.config.output_dir,  # save model object before nn.DataParallel
-                       os.path.join(self.save_dir, 'model_steps_' + str(i) + '.pt'))
-            
-class EpochMetric:
-    def __init__(self):
-        self.loss = 0.0
-
-        self.cls_loss = 0.0
-        self.cls_accuracy = 0.0
-
-        self.token_loss = 0.0
-        self.token_accuracy = 0.0
-
-        self.nb_updates = 0
-
-    def update(self, loss, cls, token):
-        self.loss += loss
-
-        self.cls_loss += cls[0]
-        self.cls_accuracy += cls[1]
-
-        self.token_loss += token[0]
-        self.token_accuracy += token[1]
-
-        self.nb_updates += 1
-
-    def __str__(self):
-        s = ""
-        s += f"loss: {self.loss / self.nb_updates} "
-        s += f"| cls: [loss: {self.cls_loss / self.nb_updates}, accuracy: {100.0 * self.cls_accuracy / self.nb_updates:.2f}%] "
-        s += f"| token: [loss: {self.token_loss / self.nb_updates}, accuracy: {100.0 * self.token_accuracy / self.nb_updates:.2f}%]"
-        return s
-
-def train_epoch(trainer, dataset, batch_processor, config, args):
-    epoch_metrics = EpochMetric()
-    update_frequency = config.batch_size // config.mini_batch_size
-    pb = tqdm.tqdm(range(config.num_train_batches), disable=~args.tqdm)
-    
-    for _ in pb:
-        idx = np.random.choice(len(dataset['train']), config.batch_size)
-        
-        for i in range(update_frequency):
-            batch = dataset['train'][idx[i*config.mini_batch_size:(i+1)*config.mini_batch_size]]
-            batch = batch_processor(batch)
-            metrics = trainer.train_step(batch)
-            epoch_metrics.update(*metrics)
-        
-        if not args.no_save and (trainer.ts + 1) % config.save_frequency == 0:
-            trainer.save_checkpoint(args.chk_dir / f"albert-{args.model}-checkpoint-{str(trainer.ts).zfill(7)}.pt")
-        
-        trainer.ts += 1
-        display = f"training | ts: {str(trainer.ts).zfill(7)} | {str(epoch_metrics)}"
-        pb.set_description(display)
-        pb.update(1)
-    
-    if not args.tqdm:
-        logger.info(display)
-    
-    return epoch_metrics
-
-def evaluate_epoch(trainer, dataset, batch_processor, config, args):
-    epoch_metrics = EpochMetric()
-    pb = tqdm.tqdm(range(config.num_eval_batches * (config.batch_size // config.mini_batch_size)), disable=~args.tqdm)
-    
-    for _ in pb:
-        idx = np.random.choice(len(dataset['test']), config.mini_batch_size)
-        batch = batch_processor(dataset['test'][idx])
-        metrics = trainer.eval_step(batch)
-        epoch_metrics.update(*metrics)
-        
-        display = f"evaluation | ts: {str(trainer.ts).zfill(7)} | {str(epoch_metrics)}"
-        pb.set_description(display)
-        pb.update(1)
-    
-    if not args.tqdm:
-        logger.info(display)
-    
-    return epoch_metrics
+            unwrapped_model = self.accelerator.unwrap_model(self.model)
+            unwrapped_model.save_pretrained(self.config.output_dir, save_function=self.accelerator.save)
+            if self.accelerator.is_main_process:
+                self.processing_class.save_pretrained(self.config.output_dir)
 
 @app.command()
 def main(
     # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    features_path: Path = PROCESSED_DATA_DIR / "features.csv",
-    labels_path: Path = PROCESSED_DATA_DIR / "labels.csv",
-    model_path: Path = MODELS_DIR / "model.pkl",
+    model_name: str = typer.Argument(help="Name of the model will be saved"),
+    pretrained_tokenizer_path: Path = typer.Option(default=..., help="Path to the pretrained tokenizer"),
+    trainer_config_path: Path = typer.Option(MODELS_CONFIG_DIR / "trainer_config.json", help="Path to the trainer config"),
+    albert_config_path: Path = typer.Option(MODELS_CONFIG_DIR / "albert_config.json", help="Path to the Albert config"),
+    builder: str = typer.Option(None, help="Path to the genome dataset"),
+    k: int = typer.Option(18, help="K-mer size"),
+    test_split: float = typer.Option(0.1, help="Test split ratio"),
+    chunk_size: int = typer.Option(128, help="Chunk size for grouping texts"),
+    preprocessing_name: str = typer.Option("gencode.v47.transcripts.k18.skipn.nocompress", help="Path to save the processed dataset"),
+    num_workers: int = typer.Option(16, help="Number of workers"),
+    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
     # -----------------------------------------
 ):
-    # logger.info("Training ALBERT model...")
-    # trainer_config = TrainerConfig.from_json()
-    # albert_config = AlbertConfig.from_json()
-    # model = AlbertModel(albert_config)
-    # data_iter = ...  # Replace with your data iterator
-    # save_dir = "models"
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    debug_callback(debug)
+    logger.info("Training ALBERT model...")
+    trainer_config = TrainerConfig.from_json(trainer_config_path)
+    albert_config = AlbertConfig.from_json(albert_config_path)
+    
+    trainer_config.chunk_size = albert_config.max_position_embeddings
+    model = AlbertForMaskedLM(AlbertModel(albert_config))
 
-    # trainer = Trainer(trainer_config, model, data_iter, save_dir, device)
-    # trainer.train(loss_function, data_parallel=True)
+    model_num_parameters = model.num_parameters() / 1_000_000
+    logger.info(f"'Custom Genomics AlBERT number of parameters: {round(model_num_parameters)}M'")
+    logger.info("Original ALBERT number of parameters: 11M")
+    logger.info("Original BERT number of parameters: 110M")
 
-    # for i in tqdm(range(10), total=10):
-    #     if i == 5:
-    #         logger.info("Something happened for iteration 5.")
-    # logger.success("Modeling training complete.")
-    # # -----------------------------------------
+    logger.info("Loading pretrained tokenizer")
+    tokenizer = PreTrainedTokenizerFast.from_pretrained(pretrained_model_name_or_path = pretrained_tokenizer_path,
+                                                        local_files_only=True)
+    tokenizer.post_processor = processors.TemplateProcessing(
+            single="[CLS]:0 $A:0 [SEP]:0",
+            pair="[CLS]:0 $A:0 [SEP]:0 $B:1 [SEP]:1",
+            special_tokens=[
+                ("[CLS]", tokenizer.convert_tokens_to_ids("[CLS]")),
+                ("[SEP]", tokenizer.convert_tokens_to_ids("[SEP]")),
+            ],
+        )
+    tokenizer.model_max_length = albert_config.max_position_embeddings
+    # TODO: arg.load_from_cache:
+    logger.info("Loading pretokenized dataset")
+    lm_datasets = load_from_disk(os.path.join(PROCESSED_DATA_DIR, preprocessing_name))
+    if debug_mode:
+        logger.debug("Downsampling pretokenized dataset")
+        train_size = 1_000
+        test_size = int(0.1 * train_size)
+        lm_datasets = lm_datasets["train"].train_test_split(
+            train_size=train_size, test_size=test_size, seed=42
+            )
+    
+    data_collator = WholeKmerMaskingDataCollator(tokenizer)
+
+    def insert_random_mask(batch, data_collator):
+        features = [dict(zip(batch, t)) for t in zip(*batch.values())]
+        masked_inputs = data_collator(features)
+        # Create a new "masked" column for each column in the dataset
+        return {"masked_" + k: v.numpy() for k, v in masked_inputs.items()}
+
+    logger.info("Insert Random Mask to the evaluation dataset")
+    eval_dataset = lm_datasets["test"].map(
+        lambda examples: insert_random_mask(examples, data_collator),
+        batched=True, num_proc=num_workers,
+        remove_columns=lm_datasets["test"].column_names,)
+    
+    eval_dataset = eval_dataset.rename_columns(
+        {
+            "masked_input_ids": "input_ids",
+            "masked_attention_mask": "attention_mask",
+            "masked_labels": "labels",
+        }
+    )
+    
+    logger.info("Preparing your data for training")
+    train_dataloader = DataLoader(
+        lm_datasets["train"],
+        shuffle=True,
+        batch_size=trainer_config.per_device_train_batch_size,
+        collate_fn=data_collator,
+    )
+    
+    eval_dataloader = DataLoader(
+        eval_dataset,
+        batch_size=trainer_config.per_device_eval_batch_size,
+        collate_fn=default_data_collator
+    )
+
+    device = torch.device(device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"'Training in device {device.type}'")
+
+    trainer_config.output_dir = os.path.join(MODELS_DIR, model_name)
+    try_mkdir(trainer_config.output_dir)
+    trainer = Trainer(
+        config=trainer_config,
+        model=model,
+        train_dataloader=train_dataloader,
+        eval_dataloader=eval_dataloader,
+        processing_class=tokenizer,
+        device=device
+    )
+    trainer.train()
+    logger.success("Modeling training complete.")
+    # -----------------------------------------
     pass
 
 if __name__ == "__main__":

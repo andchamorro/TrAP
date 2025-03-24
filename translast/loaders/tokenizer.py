@@ -1,120 +1,68 @@
 import os
-import io
-import gzip
 import random
+import collections
+import numpy as np
 from loguru import logger
-from Bio import bgzf, SeqIO
+from itertools import product
 from typing import List, Iterator
 
 from tokenizers import normalizers, pre_tokenizers, processors, BertWordPieceTokenizer, SentencePieceUnigramTokenizer, Regex 
-from transformers import PreTrainedTokenizerFast
-
-class GenomeIterator:
-    def __init__(self, file_path, file_format, fixed_size = None):
-        self.file_path = file_path
-        self.file_format = file_format
-        self.fixed_size = fixed_size
-        self.sequences, self.ids = self._load_sequences()
-        self._index = 0  # Initialize the index for iteration
-    
-    def _load_sequences(self):
-        sequences = []
-        ids = []
-        with self._file_handle() as handle:
-            for record in SeqIO.parse(handle, self.file_format):
-                if self.fixed_size is None:
-                    sequences.append(str(record.seq))
-                    ids.append(str(record.id))
-                    pass
-                else:
-                    seq = str(record.seq)
-                    for i in range(0, len(seq), self.fixed_size):
-                        chunk = seq[i:i + self.fixed_size]
-                        if len(chunk) == self.fixed_size:
-                            sequences.append(chunk)
-                            ids.append(str(record.id) + '/' + str(i))
-        return sequences, ids
-    
-    def _file_handle(self):
-        if self.file_path.endswith('.gz'):
-            return gzip.open(self.file_path, 'rt')
-        elif self.file_path.endswith('.bgz'):
-            return bgzf.open(self.file_path, 'rt')
-        else :
-            return open(self.file_path, 'rt')
-    
-    def __len__(self):
-        return len(self.sequences)
-    
-    def shuffle_sequences(self):
-        random.shuffle(self.sequences)
-    
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            return self.sequences[index]
-        elif isinstance(index, int):
-            if index < 0:
-                index += len(self.sequences)
-            if index >= len(self.sequences) or index < 0:
-                raise IndexError("The index is out of range.")
-            return self.sequences[index]
-        else:
-            raise TypeError("Invalid argument type.")
-    
-    def __iter__(self):
-        self._index = 0  # Reset the index for a new iteration
-        return self
-    
-    def __next__(self):
-        if self._index < len(self.sequences):
-            result = self.sequences[self._index]
-            self._index += 1
-            return result
-        else:
-            raise StopIteration
-    
-    def get_batch(self, start, batch_size):
-        end = start + batch_size
-        return self.sequences[start:end]
+from transformers import PreTrainedTokenizerFast, default_data_collator
 
 def create_lambda_with_globals(s):
     return eval(s, globals())
 
-# Kmer compression
-def kmer_to_encoded(kmer, encoding=None):
+# Seq compression
+def seq_to_encoded(seq, encoding=None):
+    # Define the nucleotides
+    nucleotides = ['A', 'C', 'G', 'T']
+    # TODO: Handle the padding if the seq is not div by 2
+    if encoding in ("pairs", "2-mers", 2):
+        # Generate all possible 2-mers
+        pairs = [''.join(p) for p in product(nucleotides, repeat=2)]
+        
+        # Create a dictionary with 2-mers as keys and Unicode characters as values
+        pairs_to_unicode = {pair: chr(65 + i) for i, pair in enumerate(pairs)}
+        return ''.join(pairs_to_unicode[seq[i:i+2]] for i in range(0, len(seq)-1, 2))
+    
+    # TODO: Handle the padding if the seq is not div by 3
+    if encoding in ("codons", "3-mers", 3):
+        # Generate all possible 3-mers (codons)
+        codons = [''.join(p) for p in product(nucleotides, repeat=3)]
+        # Create a dictionary with 3-mers as keys and Unicode characters as values
+        codons_to_unicode = {codon: chr(65 + i) for i, codon in enumerate(codons)}
+        return ''.join(codons_to_unicode[seq[i:i+3]] for i in range(0, len(seq)-2, 3))
     # Do nothing
-    if encoding is None:
-        return kmer
-        pass
-    # Define a mapping from nucleotides to 2-bit binary representation
-    nucleotide_to_bits = {
-        'A': '00',
-        'C': '01',
-        'G': '10',
-        'T': '11'
-    }
+    return seq
+
+def encoded_to_seq(encoded_string, encoding=None):
+    # Define the nucleotides
+    nucleotides = ['A', 'C', 'G', 'T']
+    # TODO: Handle the padding if the seq is not div by 2
+    if encoding in ("pairs", "2-mers"):
+        # Generate all possible 2-mers
+        pairs = [''.join(p) for p in product(nucleotides, repeat=2)]
+        
+        # Create a dictionary with 2-mers as values and Unicode characters as keys
+        unicode_to_pairs = {chr(65 + i): pair for i, pair in enumerate(pairs)}
+        return ''.join(unicode_to_pairs[e] for e in encoded_string)
     
-    # Convert the kmer to a binary string
-    binary_string = ''.join(nucleotide_to_bits[nuc] for nuc in kmer)
-    
-    # Pad the binary string to make its length a multiple of 8
-    padding_length = (8 - len(binary_string) % 8) % 8
-    binary_string = binary_string + '0' * padding_length
-    
-    # Convert the binary string to bytes
-    byte_array = bytearray(int(binary_string[i:i+8], 2) for i in range(0, len(binary_string), 8))
-    
-    # Convert the byte array to the specified encoding
-    encoded_string = byte_array.decode(encoding, errors='ignore')
-    
+    # TODO: Handle the padding if the seq is not div by 3
+    if encoding in ("codos", "3-mers"):
+        # Generate all possible 3-mers (codons)
+        codons = [''.join(p) for p in product(nucleotides, repeat=3)]
+        # Create a dictionary with 3-mers as values and Unicode characters as keys
+        unicode_to_codons = {chr(65 + i): codon for i, codon in enumerate(codons)}
+        return ''.join(unicode_to_codons[e] for e in encoded_string)
+    # Do nothing
     return encoded_string
 
 def _kmer_split(k: int, sequence: str, encoding: str=None) -> List[str]:
-    return " ".join([kmer_to_encoded(sequence[j: j + k], encoding=encoding) for j in range(len(sequence) - k + 1)])
+    return " ".join([seq_to_encoded(sequence[j: j + k], encoding=encoding) for j in range(len(sequence) - k + 1)])
 
 def _dataset_batch(raw_datasets: Iterator[str], batch_size: int, k: int, encoding: str=None) -> Iterator[str]:
     for i in range(0, len(raw_datasets), batch_size):
-        yield [_kmer_split(k, seq, encoding=encoding) for seq in raw_datasets.get_batch(i, batch_size)]
+        yield [_kmer_split(k, seq, encoding=encoding) for seq in raw_datasets[i:i + batch_size]]
 
 def train_sentencepiece(raw_datasets, google=False, out="./", name="sequencepiece_unigram", 
                         dataset_filter=lambda e: e, vocab_size=10000, batch_size=1024, k=17, max_sentence_length=500000, fast=False):
@@ -239,3 +187,45 @@ def train_wordpiece(raw_datasets, out="./", name="wordpiece",
         logger.info("Save Tokenizer ...")
         tokenizer.save_model(out, name)
         logger.success("Tokenizer training complete.")
+
+class WholeKmerMaskingDataCollator:
+    """
+    Data collator that applies whole kmer masking for masked language modeling.
+    
+    Args:
+        tokenizer (PreTrainedTokenizer): The tokenizer used for encoding the data.
+        wkm_probability (float): The probability of masking a whole kmer.
+    """
+    def __init__(self, tokenizer, wwm_probability=0.2):
+        self.tokenizer = tokenizer
+        self.wwm_probability = wwm_probability
+
+    def __call__(self, features):
+        for feature in features:
+            # Extract word_ids from the feature
+            word_ids = feature["word_ids"]
+
+            # Create a map between words and corresponding token indices
+            mapping = collections.defaultdict(list)
+            current_word_index = -1
+            current_word = None
+            for idx, word_id in enumerate(word_ids):
+                if word_id is not None:
+                    if word_id != current_word:
+                        current_word = word_id
+                        current_word_index += 1
+                    mapping[current_word_index].append(idx)
+
+            # Randomly mask words
+            mask = np.random.binomial(1, self.wwm_probability, (len(mapping),))
+            input_ids = feature["input_ids"]
+            labels = feature["labels"]
+            new_labels = [-100] * len(labels)
+            for word_id in np.where(mask)[0]:
+                word_id = word_id.item()
+                for idx in mapping[word_id]:
+                    new_labels[idx] = labels[idx]
+                    input_ids[idx] = self.tokenizer.mask_token_id
+            feature["labels"] = new_labels
+
+        return default_data_collator(features)

@@ -19,9 +19,6 @@ def check_all_padding_sequences(input_ids, pad_token_id):
     # Check if each sequence in the batch is entirely padding
     all_padding_mask = (input_ids == pad_token_id).all(dim=1)
     return all_padding_mask
-        
-# Example usage
-# check_for_nans(input_ids, "input_ids")
 class AlbertConfig:
     """
     This is the configuration class to store the configuration of an ALBERT model. It is used to instantiate an ALBERT model
@@ -29,44 +26,83 @@ class AlbertConfig:
     will yield a similar configuration to that of the ALBERT architecture.
 
     Args:
-        vocab_size (int, optional, defaults to None): 
+        vocab_size (int, optional, defaults to 30522): 
             Vocabulary size of the ALBERT model. Defines the number of different tokens that can be represented by the 
             `input_ids` passed when calling the model.
-        embedding_size (int, optional, defaults to 128): 
+        embedding_size (int, optional, defaults to 24): 
             Dimensionality of the token embeddings.
-        hidden_size (int, optional, defaults to 4096): 
+        hidden_size (int, optional, defaults to 64): 
             Dimensionality of the encoder layers and the pooler layer.
-        num_hidden_layers (int, optional, defaults to 12): 
+        num_hidden_layers (int, optional, defaults to 6): 
             Number of hidden layers in the Transformer encoder.
-        num_attention_heads (int, optional, defaults to 64): 
+        num_attention_heads (int, optional, defaults to 12): 
             Number of attention heads for each attention layer in the Transformer encoder.
-        intermediate_size (int, optional, defaults to 16384): 
+        intermediate_size (int, optional, defaults to 768): 
             Dimensionality of the "intermediate" (often named feed-forward) layer in the Transformer encoder.
         max_position_embeddings (int, optional, defaults to 512): 
             The maximum sequence length that this model might ever be used with. Typically set this to something large 
             just in case (e.g., 512 or 1024 or 2048).
         type_vocab_size (int, optional, defaults to 2): 
             The vocabulary size of the `token_type_ids` passed when calling the model.
+        attention_probs_dropout_prob (float, optional, defaults to 0.0): 
+            The dropout ratio for the attention probabilities.
+        hidden_dropout_prob (float, optional, defaults to 0.1): 
+            The dropout probability for all fully connected layers in the embeddings, encoder, and pooler.
+        classifier_dropout_prob (float, optional, defaults to 0.1): 
+            The dropout ratio for the classification head.
+        layer_norm_eps (float, optional, defaults to 1e-12): 
+            The epsilon used by the layer normalization layers.
+        hidden_act (str, optional, defaults to "gelu_new"): 
+            The activation function to use.
+        net_structure_type (int, optional, defaults to 0): 
+            The network structure type.
+        pad_token_id (int, optional, defaults to 0): 
+            The ID of the padding token.
+        bos_token_id (int, optional, defaults to 2): 
+            The ID of the beginning-of-sequence token.
+        eos_token_id (int, optional, defaults to 3): 
+            The ID of the end-of-sequence token.
     """
-    def __init__(self, vocab_size=None, 
-                 embedding_size=128,
-                 hidden_size=4096,
-                 num_hidden_layers=12,
-                 num_attention_heads=64, 
-                 intermediate_size=16384,
+    def __init__(self,
+                 architectures=[],
+                 model_type="albert",
+                 vocab_size=30522, 
+                 embedding_size=24,
+                 hidden_size=64,
+                 num_hidden_layers=6,
+                 num_attention_heads=12, 
+                 intermediate_size=768,
                  max_position_embeddings=512,
-                 hidden_dropout_prob = 0.1,
-                 type_vocab_size=2):
+                 type_vocab_size=2,
+                 attention_probs_dropout_prob=0.0,
+                 hidden_dropout_prob=0.1,
+                 classifier_dropout_prob=0.1,
+                 layer_norm_eps=1e-12,
+                 hidden_act="gelu_new",
+                 net_structure_type=0,
+                 pad_token_id=0,
+                 bos_token_id=2,
+                 eos_token_id=3):
+        
+        self.architectures = architectures
+        self.model_type = model_type
         self.vocab_size = vocab_size
         self.embedding_size = embedding_size
         self.hidden_size = hidden_size
-        
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.intermediate_size = intermediate_size
         self.max_position_embeddings = max_position_embeddings
-        self.hidden_dropout_prob = hidden_dropout_prob # in albert, dropout can potentially hurt performance at large sizes.
         self.type_vocab_size = type_vocab_size
+        self.attention_probs_dropout_prob = attention_probs_dropout_prob
+        self.hidden_dropout_prob = hidden_dropout_prob
+        self.classifier_dropout_prob = classifier_dropout_prob
+        self.layer_norm_eps = layer_norm_eps
+        self.hidden_act = hidden_act
+        self.net_structure_type = net_structure_type
+        self.pad_token_id = pad_token_id
+        self.bos_token_id = bos_token_id
+        self.eos_token_id = eos_token_id
     @classmethod
     def from_json(cls, file):
         return cls(**json.load(open(file, "r")))
@@ -90,12 +126,21 @@ class PositionalEmbedding(nn.Module):
 class AlbertEmbeddings(nn.Module):
     def __init__(self, config):
         super(AlbertEmbeddings, self).__init__()
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.embedding_size)
+        self.word_embeddings = nn.Embedding(config.vocab_size, config.embedding_size, padding_idx=config.pad_token_id)
         self.embedding_to_hidden = nn.Linear(config.embedding_size, config.hidden_size)
         self.position_embeddings = PositionalEmbedding(config.hidden_size, max_length = config.max_position_embeddings, dropout = config.hidden_dropout_prob)
         self.segment_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+
+        # position_ids (1, len position emb) is contiguous in memory and exported when serialized
+        self.register_buffer(
+            "position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)), persistent=False
+        )
+        self.register_buffer(
+            "token_type_ids", torch.zeros(self.position_ids.size(), dtype=torch.long), persistent=False
+        )
+        self.position_embedding_type = getattr(config, "position_embedding_type", "absolute") # default absolute
 
     def forward(self, input_ids, token_type_ids=None, position_ids=None):
         input_shape = input_ids.size()
@@ -105,7 +150,7 @@ class AlbertEmbeddings(nn.Module):
             position_ids = position_ids.unsqueeze(0).expand(input_shape) # (S,) -> (B, S)
 
         if token_type_ids is None:
-            token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=input_ids.device)
+            token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=position_ids.device)
         
         # Factorized Embedding
         words_embeddings = self.word_embeddings(input_ids)
@@ -114,7 +159,8 @@ class AlbertEmbeddings(nn.Module):
 
         embeddings = words_embeddings + segment_embeddings
         # Positional Embedding
-        embeddings = self.position_embeddings(embeddings)
+        if self.position_embedding_type == "absolute":
+            embeddings = self.position_embeddings(embeddings)
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
@@ -142,6 +188,7 @@ class SoftmaxAttention(nn.Module):
         k = k.transpose(0, 1)
         v = v.transpose(0, 1)
         
+        attention_mask = attention_mask.bool()
         # Apply multi-head attention
         attn_output, _ = self.multihead_attn(q, k, v, key_padding_mask=~attention_mask)
         
@@ -156,17 +203,17 @@ class AlbertLayer(nn.Module):
         self.attention = SoftmaxAttention(config.hidden_size, config.num_attention_heads, dropout_rate=config.hidden_dropout_prob)
         self.intermediate = nn.Linear(config.hidden_size, config.intermediate_size)
         self.output = nn.Linear(config.intermediate_size, config.hidden_size)
-        self.LayerNorm = nn.LayerNorm([config.max_position_embeddings, config.hidden_size], eps=1e-12)
+        self.LayerNorm = nn.LayerNorm([config.max_position_embeddings, config.hidden_size], eps=config.layer_norm_eps)
 
-    def forward(self, hidden_states, attention_mask=None):
+    def forward(self, hidden_states, attention_mask=None, output_attentions = False):
         attention_output = self.attention(hidden_states, attention_mask=attention_mask)
-        attention_output = self.LayerNorm(attention_output + hidden_states)
+        layernormed_context_layer = self.LayerNorm(attention_output + hidden_states)
 
-        intermediate_output = self.intermediate(attention_output)
+        intermediate_output = self.intermediate(layernormed_context_layer)
         intermediate_output = F.gelu(intermediate_output)
         layer_output = self.output(intermediate_output)
-        layer_output = self.LayerNorm(layer_output + attention_output)
-        return layer_output
+        layer_output = self.LayerNorm(layer_output + layernormed_context_layer)
+        return (layer_output, attention_output) if output_attentions else layernormed_context_layer
 
 class AlbertModel(nn.Module):
     def __init__(self, config):
@@ -175,13 +222,85 @@ class AlbertModel(nn.Module):
         self.embeddings = AlbertEmbeddings(config)
         self.encoder = nn.ModuleList([AlbertLayer(config) for _ in range(config.num_hidden_layers)])
 
-    def forward(self, input_ids, token_type_ids, key_padding_mask=None):
-        embedding_output = self.embeddings(input_ids, token_type_ids)
+    def num_parameters(self, only_trainable: bool = False, exclude_embeddings: bool = False) -> int:
+        """
+        Get number of (optionally, trainable or non-embeddings) parameters in the module.
+        """
+
+        if exclude_embeddings:
+            embedding_param_names = [
+                f"{name}.weight" for name, module_type in self.named_modules() if isinstance(module_type, nn.Embedding)
+            ]
+            total_parameters = [
+                parameter for name, parameter in self.named_parameters() if name not in embedding_param_names
+            ]
+        else:
+            total_parameters = list(self.parameters())
+
+        total_numel = []
+
+        for param in total_parameters:
+            if param.requires_grad or not only_trainable:
+                total_numel.append(param.numel())
+
+        return sum(total_numel)
+
+    def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None):
+        # Albert Embeddings
+        embedding_output = self.embeddings(input_ids, token_type_ids, position_ids)
         hidden_states = embedding_output
+        # Albert Transformer
+        if attention_mask is None:
+            attention_mask = torch.ones(input_ids.size(), device=input_ids.device)
         for layer_module in self.encoder:
-            hidden_states = layer_module(hidden_states, key_padding_mask)
+            hidden_states = layer_module(hidden_states, attention_mask)
         return hidden_states
     
+class AlbertMLMHead(nn.Module):
+    def __init__(self, config: AlbertConfig):
+        super().__init__()
+
+        self.LayerNorm = nn.LayerNorm(config.embedding_size, eps=config.layer_norm_eps)
+        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        self.dense = nn.Linear(config.hidden_size, config.embedding_size)
+        self.decoder = nn.Linear(config.embedding_size, config.vocab_size)
+        self.decoder.bias = self.bias
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.dense(hidden_states)
+        hidden_states = F.gelu(hidden_states)
+        hidden_states = self.LayerNorm(hidden_states)
+        hidden_states = self.decoder(hidden_states)
+
+        prediction_scores = hidden_states
+
+        return prediction_scores
+
+class AlbertForMaskedLM(nn.Module):
+    def __init__(self, transformer, loss_fct=None):
+        super(AlbertForMaskedLM, self).__init__()
+        self.config = transformer.config
+        self.transformer = transformer
+        self.predictions = AlbertMLMHead(transformer.config)
+        self.loss_fct = loss_fct if loss_fct is not None else nn.CrossEntropyLoss()
+    def num_parameters(self, only_trainable: bool = False, exclude_embeddings: bool = False) -> int:
+        return self.transformer.num_parameters(only_trainable, exclude_embeddings)
+    def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, labels=None, **kwargs):
+        outputs = self.transformer(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+        )
+        prediction_scores = self.predictions(outputs)
+        masked_lm_loss = None
+        if labels is not None:
+            masked_lm_loss = self.loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+        
+        return dict(
+            loss=masked_lm_loss,
+            logits=prediction_scores,
+            hidden_states=outputs)
 class AlbertMaskedWrapper(nn.Module):
     """
     Wrapper for ALBERT Pretraining: Masked Language Modeling (MLM) and Sentence Order Prediction (SOP)
@@ -196,8 +315,8 @@ class AlbertMaskedWrapper(nn.Module):
         self.eh_weight = self.transformer.embeddings.embedding_to_hidden.weight.t()
         self.eh_bias = self.transformer.embeddings.embedding_to_hidden.bias
 
-    def forward(self, input_ids, token_type_ids=None, key_padding_mask=None, masked_pos=None):
-        attn = self.transformer(input_ids, token_type_ids=token_type_ids, key_padding_mask=key_padding_mask)
+    def forward(self, input_ids, token_type_ids=None, position_ids=None, key_padding_mask=None, masked_pos=None):
+        attn = self.transformer(input_ids, token_type_ids=token_type_ids, position_ids=position_ids, key_padding_mask=key_padding_mask)
 
         cls_attn = attn[:, 0]
         cls_logits = self.cls_mlp(cls_attn)
@@ -240,7 +359,8 @@ class AlbertMaskedTrainer:
         """
         Calculates Masked LM and SOP loss
         """
-        cls_logits, token_logits = self.transformer(input_ids, token_type_ids, key_padding_mask=key_padding_mask)
+        # TODO: position_ids
+        cls_logits, token_logits = self.transformer(input_ids, token_type_ids, position_ids=None, key_padding_mask=key_padding_mask)
 
         cls_loss = F.cross_entropy(cls_logits, sentence_order)
 
