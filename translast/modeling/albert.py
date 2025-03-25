@@ -1,5 +1,6 @@
 import json
-from math import ceil
+from typing import Optional
+from math import ceil, sqrt
 from contextlib import nullcontext
 import torch
 import torch.nn as nn
@@ -164,43 +165,69 @@ class AlbertEmbeddings(nn.Module):
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
-    
+
 class SoftmaxAttention(nn.Module):
-    def __init__(self, embed_dim: int, num_attention_heads: int = 8, dropout_rate: float = 0.0, batch_first: bool = False):
+    def __init__(self, config):
         super().__init__()
-        # Multi-head attention layer
-        self.multihead_attn = nn.MultiheadAttention(embed_dim, num_attention_heads, dropout=dropout_rate, batch_first=batch_first)
+        if config.hidden_size % config.num_attention_heads != 0:
+            raise ValueError(
+                f"The hidden_size ({config.hidden_size}) is not a multiple of the number of attention heads ({config.num_attention_heads})"
+            )
 
-        # Linear layers for query, key, and value projections
-        self.qkv_projection = nn.Linear(embed_dim, embed_dim * 3, bias=False)
-        self.output_projection = nn.Linear(embed_dim, embed_dim)
-        
-        # Initialize weights
-        nn.init.kaiming_normal_(self.qkv_projection.weight, nonlinearity='linear')
-        nn.init.kaiming_normal_(self.output_projection.weight, nonlinearity='linear')
+        self.num_attention_heads = config.num_attention_heads
+        self.hidden_size = config.hidden_size
+        self.attention_head_size = config.hidden_size // config.num_attention_heads
+        self.all_head_size = self.num_attention_heads * self.attention_head_size
 
-    def forward(self, x: torch.FloatTensor, attention_mask: torch.BoolTensor = None):
-        # Project input to query, key, and value tensors
-        q, k, v = self.qkv_projection(x).chunk(3, dim=-1)
-        
-        # Transpose for multi-head attention
-        q = q.transpose(0, 1)
-        k = k.transpose(0, 1)
-        v = v.transpose(0, 1)
-        
-        attention_mask = attention_mask.bool()
-        # Apply multi-head attention
-        attn_output, _ = self.multihead_attn(q, k, v, key_padding_mask=~attention_mask)
-        
-        # Transpose back and project output
-        attn_output = attn_output.transpose(0, 1)
-        output = self.output_projection(attn_output)
-        
-        return output
+        self.query = nn.Linear(config.hidden_size, self.all_head_size)
+        self.key = nn.Linear(config.hidden_size, self.all_head_size)
+        self.value = nn.Linear(config.hidden_size, self.all_head_size)
+
+        self.attention_dropout = nn.Dropout(config.attention_probs_dropout_prob)
+        self.output_dropout = nn.Dropout(config.attention_probs_dropout_prob)
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+
+    def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        x = x.view(new_x_shape)
+        return x.permute(0, 2, 1, 3)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.FloatTensor] = None
+    ):
+        mixed_query_layer = self.query(hidden_states)
+        mixed_key_layer = self.key(hidden_states)
+        mixed_value_layer = self.value(hidden_states)
+
+        query_layer = self.transpose_for_scores(mixed_query_layer)
+        key_layer = self.transpose_for_scores(mixed_key_layer)
+        value_layer = self.transpose_for_scores(mixed_value_layer)
+
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / sqrt(self.attention_head_size)
+
+        if attention_mask is not None:
+            attention_scores = attention_scores + attention_mask
+
+        attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+        attention_probs = self.attention_dropout(attention_probs)
+
+        attention_probs = attention_probs
+
+        context_layer = torch.matmul(attention_probs, value_layer)
+        context_layer = context_layer.transpose(2, 1).flatten(2)
+
+        projected_context_layer = self.dense(context_layer)
+        projected_context_layer_dropout = self.output_dropout(projected_context_layer)
+        layernormed_context_layer = self.LayerNorm(hidden_states + projected_context_layer_dropout)
+        return layernormed_context_layer
 class AlbertLayer(nn.Module):
     def __init__(self, config):
         super(AlbertLayer, self).__init__()
-        self.attention = SoftmaxAttention(config.hidden_size, config.num_attention_heads, dropout_rate=config.hidden_dropout_prob)
+        self.attention = SoftmaxAttention(config)
         self.intermediate = nn.Linear(config.hidden_size, config.intermediate_size)
         self.output = nn.Linear(config.intermediate_size, config.hidden_size)
         self.LayerNorm = nn.LayerNorm([config.max_position_embeddings, config.hidden_size], eps=config.layer_norm_eps)
@@ -220,7 +247,7 @@ class AlbertModel(nn.Module):
         super(AlbertModel, self).__init__()
         self.config = config
         self.embeddings = AlbertEmbeddings(config)
-        self.encoder = nn.ModuleList([AlbertLayer(config) for _ in range(config.num_hidden_layers)])
+        self.encoder = AlbertLayer(config)
 
     def num_parameters(self, only_trainable: bool = False, exclude_embeddings: bool = False) -> int:
         """
@@ -252,8 +279,11 @@ class AlbertModel(nn.Module):
         # Albert Transformer
         if attention_mask is None:
             attention_mask = torch.ones(input_ids.size(), device=input_ids.device)
-        for layer_module in self.encoder:
-            hidden_states = layer_module(hidden_states, attention_mask)
+
+        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+        extended_attention_mask = (1.0 - extended_attention_mask) * torch.iinfo(attention_mask.dtype).min
+        for _ in range(self.config.num_hidden_layers):
+            hidden_states = self.encoder(hidden_states, extended_attention_mask)
         return hidden_states
     
 class AlbertMLMHead(nn.Module):

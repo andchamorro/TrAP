@@ -175,7 +175,7 @@ class Trainer:
                     outputs = self.model(**batch)
 
                 loss = outputs['loss']
-                losses.append(self.accelerator.gather(loss.repeat(self.config.batch_size)))
+                losses.append(self.accelerator.gather(loss.repeat(self.config.per_device_eval_batch_size)))
 
             losses = torch.cat(losses)
             losses = losses[: len(self.eval_dataloader)]
