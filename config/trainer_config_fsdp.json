@@ -13,7 +13,12 @@
     "restore_callback_states_from_checkpoint": true,
     "ddp_backend": "nccl",
     "fsdp": "full_shard",
-    "fsdp_config": null,
+    "fsdp_config": {
+        "fsdp_transformer_layer_cls_to_wrap": [
+            "AlbertLayer", "AlbertEmbeddings"
+        ],
+        "fsdp_auto_wrap_policy": "TRANSFORMER_BASED_WRAP"
+    },
     "dataloader_persistent_workers": true,
     "torch_compile": true,
     "remove_unused_columns": false

@@ -101,9 +101,8 @@ def main(
     # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
     model_name: str = typer.Argument(help="Name of the model will be saved"),
     pretrained_tokenizer_path: Path = typer.Option(default=..., help="Path to the pretrained tokenizer"),
-    trainer_config_path: Path = typer.Option(CONFIG_DIR / "trainer_config_fsdp.json", help="Path to the trainer config"),
+    trainer_config_path: Path = typer.Option(CONFIG_DIR / "trainer_config.json", help="Path to the trainer config"),
     albert_config_path: Path = typer.Option(CONFIG_DIR / "albert_config.json", help="Path to the Albert config"),
-    fsdp_config: str = typer.Option(None, help="Config to be used with fsdp (Pytorch Distributed Parallel Training)."),
     builder: str = typer.Option(None, help="Path to the genome dataset"),
     k: int = typer.Option(18, help="K-mer size"),
     test_split: float = typer.Option(0.1, help="Test split ratio"),
@@ -114,14 +113,15 @@ def main(
     # -----------------------------------------
 ):
     debug_callback(debug)
+    if not trainer_config_path.exists():
+        # Try in the CONFIG_DIR
+        if not (CONFIG_DIR / trainer_config_path).exists():
+            trainer_config_path = CONFIG_DIR / trainer_config_path
+        else:
+            logger.error("Path to the trainer config not exist.")
+    
     logger.info("Training ALBERT model...")
-    with open(trainer_config_path, 'r') as trainer_config_file:
-        trainer_config = json.load(trainer_config_file)
-        if fsdp_config is not None:
-            trainer_config["fsdp_config"] = fsdp_config
-            pass
-
-    trainer_args = TrainingArguments(**trainer_config)
+    trainer_args = TrainingArguments(**json.load(open(trainer_config_path, 'r')))
     trainer_args.output_dir = os.path.join(MODELS_DIR, model_name)
     trainer_args.dataloader_num_workers = num_workers
     model = AlbertForMaskedLM(AlbertConfig.from_json_file(albert_config_path))
