@@ -203,7 +203,7 @@ class WholeKmerMaskingDataCollator:
     def __call__(self, features):
         for feature in features:
             # Extract word_ids from the feature
-            word_ids = feature["word_ids"]
+            word_ids = feature.pop("word_ids")
 
             # Create a map between words and corresponding token indices
             mapping = collections.defaultdict(list)
