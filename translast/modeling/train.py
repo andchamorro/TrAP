@@ -115,7 +115,7 @@ def main(
     debug_callback(debug)
     if not trainer_config_path.exists():
         # Try in the CONFIG_DIR
-        if not (CONFIG_DIR / trainer_config_path).exists():
+        if (CONFIG_DIR / trainer_config_path).exists():
             trainer_config_path = CONFIG_DIR / trainer_config_path
         else:
             logger.error("Path to the trainer config not exist.")

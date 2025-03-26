@@ -19,7 +19,8 @@
         ],
         "fsdp_auto_wrap_policy": "TRANSFORMER_BASED_WRAP"
     },
+    "dataloader_pin_memory": true,
     "dataloader_persistent_workers": true,
-    "torch_compile": true,
+    "torch_compile": false,
     "remove_unused_columns": false
 }
