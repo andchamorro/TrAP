@@ -1,5 +1,4 @@
 import os
-import io
 import typer
 import json
 from loguru import logger
@@ -191,8 +190,16 @@ def main(
         data_collator=data_collator,
         processing_class=tokenizer,
     )
-    trainer.train()
+    train_result = trainer.train()
     logger.success("Modeling training complete.")
+    metrics = train_result.metrics
+    metrics["train_samples"] = len(lm_datasets["train"])
+    logger.success("Saving model.")
+    trainer.save_model(os.path.join(MODELS_DIR, model_name, 'final')) # Saves the tokenizer too for easy upload
+    trainer.log_metrics("train", metrics)
+    trainer.save_metrics("train", metrics)
+    trainer.save_state()
+    logger.success("Train model done.")
     # -----------------------------------------
     pass
 

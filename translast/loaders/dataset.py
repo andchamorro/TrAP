@@ -9,11 +9,12 @@ from torch.utils.data import Dataset
 from translast.config.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 class GenomeDataset(Dataset):
 
-    def __init__(self, file_path, file_format, transform=None, target_transform=None):
+    def __init__(self, file_path, file_format, transform=None, target_transform=None, standardization=None):
         self.file_path = file_path
         self.file_format = file_format
         self.transform = transform
         self.target_transform = target_transform
+        self.standardization = standardization if standardization is not None else self._standardization
         self.sequences, self.complement, self.ids = self._load_sequences()
         self._index = 0  # Initialize the index for iteration
 
@@ -23,8 +24,8 @@ class GenomeDataset(Dataset):
         ids = []
         with self._file_handle() as handle:
             for record in SeqIO.parse(handle, self.file_format):
-                sequences.append(self._standardization(str(record.seq)))
-                complement.append(self._standardization(str(record.seq.reverse_complement())))
+                sequences.append(self.standardization(str(record.seq)))
+                complement.append(self.standardization(str(record.seq.reverse_complement())))
                 ids.append(str(record.id))
                 pass
         return sequences, complement, ids
@@ -51,8 +52,9 @@ class GenomeDataset(Dataset):
         if self._index < len(self.sequences):
             seq = self.sequences[self._index]
             rev = self.complement[self._index]
+            id = self.ids[self._index ]
             self._index += 1
-            return seq, rev
+            return seq, rev, id
         else:
             raise StopIteration
     
@@ -66,11 +68,12 @@ class GenomeDataset(Dataset):
                 raise IndexError("The index is out of range.")
             seq = self.sequences[index]
             rev = self.complement[index]
+            id = self.ids[index]
             if self.transform:
                 seq = self.transform(seq)
                 rev = self.transform(rev)
             if self.target_transform:
                 index = self.target_transform(index)
-            return seq, rev, index
+            return seq, rev, id, index
         else:
             raise TypeError("Invalid argument type.")
