@@ -1,30 +1,475 @@
+import os
+import re
+import gzip
+import time
+import typer
+import json
+from tqdm import tqdm
+from loguru import logger
+from typing import Optional, Union, List
+import numpy as np
+
+
+import pickle
+import pysam
+from Bio import bgzf, SeqIO
+import torch
 from pathlib import Path
 
-import typer
-from loguru import logger
-from tqdm import tqdm
+from transformers.pipelines.pt_utils import KeyDataset
+from transformers import Trainer as Trainer, AlbertForSequenceClassification, TrainingArguments
+from transformers import PreTrainedTokenizerFast, DataCollatorWithPadding
+from transformers import pipeline
+from tokenizers import processors
+from datasets import load_from_disk, Dataset
+import evaluate
 
-from translast.config.config import MODELS_DIR, PROCESSED_DATA_DIR
+from accelerate import PartialState
+from accelerate.utils import gather_object
+
+# from translast.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
+from translast.config.config import CONFIG_DIR, MODELS_DIR, PROCESSED_DATA_DIR
+
+START_TIME = time.strftime("%Y%m%d_%H%M%S")
+DTYPE_MAP = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
 
 app = typer.Typer()
 
+debug_mode = False
+def debug_callback(debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")):
+    """
+    Callback function to handle the debug flag.
+    """
+    global debug_mode
+    if debug:
+        typer.echo("Debug mode enabled")
+        debug_mode = True
+
+def try_mkdir(dir_name):
+    # Save the tokenizer
+    try:
+        os.makedirs(dir_name)
+    except FileExistsError:
+            # directory already exists
+            pass
+    
+def get_batches(items, batch_size):
+    num_batches = (len(items) + batch_size - 1) // batch_size
+    batches = []
+
+    for i in range(num_batches):
+        start_index = i * batch_size
+        end_index = min((i + 1) * batch_size, len(items))
+        batch = items[start_index:end_index]
+        batches.append(batch)
+
+    return batches
+
+class GenomeDataset(Dataset):
+
+    def __init__(self, file_path, file_format, transform=None, target_transform=None):
+        self.file_path = Path(file_path)
+        self.file_format = file_format
+        self.transform = transform
+        self.target_transform = target_transform
+        self.sequences, self.complement, self.ids = self._load_sequences()
+        self._index = 0  # Initialize the index for iteration
+
+    def _load_sequences(self):
+        sequences = []
+        complement = []
+        ids = []
+        with self._file_handle() as handle:
+            for record in SeqIO.parse(handle, self.file_format):
+                sequences.append(self._standardization(str(record.seq)))
+                complement.append(self._standardization(str(record.seq.reverse_complement())))
+                ids.append(str(record.id))
+                pass
+        return sequences, complement, ids
+    
+    def _standardization(self, sequence):
+        return re.sub(r'[^ACTGN]', '', sequence.upper())
+    
+    def _file_handle(self):
+        if self.file_path.suffix == '.gz':
+            return gzip.open(self.file_path, 'rt')
+        elif self.file_path.suffix == '.bgz':
+            return bgzf.open(self.file_path, 'rt')
+        else :
+            return open(self.file_path, 'rt')
+    
+    def __len__(self):
+        return len(self.sequences)
+    
+    def __iter__(self):
+        self._index = 0  # Reset the index for a new iteration
+        return self
+    
+    def __next__(self):
+        if self._index < len(self.sequences):
+            seq = self.sequences[self._index]
+            rev = self.complement[self._index]
+            i = self.ids[self._index]
+            self._index += 1
+            return seq, rev, i
+        else:
+            raise StopIteration
+    
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return self.sequences[index], self.complement[index]
+        elif isinstance(index, int):
+            if index < 0:
+                index += len(self.sequences)
+            if index >= len(self.sequences) or index < 0:
+                raise IndexError("The index is out of range.")
+            seq = self.sequences[index]
+            rev = self.complement[index]
+            i = self.ids[index]
+            if self.transform:
+                seq, rev, i = self.transform(seq, rev, i)
+            if self.target_transform:
+                index = self.target_transform(index)
+            return seq, rev, i, index
+        else:
+            raise TypeError("Invalid argument type.")
+
+class SAMDataset(Dataset):
+
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self._ids, self.queries = self._load_alignments()
+        self._index = 0  # Initialize the index for iteration
+
+    def _load_alignments(self):
+        queries = {}
+        alignments = self.alignments()
+        for record in alignments:
+            queries[record.query_name] = record.query_sequence
+        return list(queries.keys()), queries
+    
+    def alignments(self):
+        if self.file_path.suffix == '.bam':
+            return pysam.AlignmentFile(self.file_path, "rb")
+        elif self.file_path.suffix == '.sam':
+            return pysam.AlignmentFile(self.file_path, "r")
+        elif self.file_path.suffix == '.cram':
+            return pysam.AlignmentFile(self.file_path, "rc")
+        else :
+            raise ValueError("Unsupported file type")
+    
+    def __len__(self):
+        return len(self._ids)
+    
+    def __iter__(self):
+        self._index = 0  # Reset the index for a new iteration
+        return self
+    
+    def __next__(self):
+        if self._index < len(self._ids):
+            key = self._ids[self._index]
+            self._index += 1
+            return key, self.queries[key]
+        else:
+            raise StopIteration
+    
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return self._ids[index], [self.queries[key] for key in self._ids[index]]
+        elif isinstance(index, int):
+            if index < 0:
+                index += len(self._ids)
+            if index >= len(self._ids) or index < 0:
+                raise IndexError("The index is out of range.")
+            key = self._ids[self._index]
+            return key, self.queries[key]
+        else:
+            raise TypeError("Invalid argument type.")
+
+def kmer_split(k: int, sequence: str) -> List[str]:
+    return " ".join([sequence[j: j + k] for j in range(len(sequence) - k + 1)])
+
+def break_long_read(long_read, read_length=150, mean_fragment_size=500, std_fragment_size=10, coverage=5):
+    if len(long_read) < mean_fragment_size + std_fragment_size:
+        return [{'forward': long_read[:read_length], 'reverse': long_read[read_length::-1]}]
+    # Calculate the number of fragments needed to achieve the desired coverage
+    num_fragments = int(len(long_read) * coverage / mean_fragment_size)
+    
+    # Generate fragment sizes based on the mean and standard deviation
+    fragment_sizes = np.random.normal(mean_fragment_size, std_fragment_size, num_fragments).astype(int)
+    
+    # Initialize an empty list to store the short reads
+    short_reads = []
+    
+    # Generate short reads from the long read
+    for fragment_size in fragment_sizes:
+        try:
+            forward_start = np.random.randint(0, len(long_read) - fragment_size + 1)
+        except ValueError:
+            forward_start = 0
+        forward_end = forward_start + read_length
+        forward = long_read[forward_start:forward_end]
+
+        insert_size = fragment_size - (read_length * 2)
+        reverse_start = forward_end + insert_size
+        reverse_end = reverse_start + read_length
+        if reverse_end > len(long_read):
+            # we use random insert when the modelled template length distribution
+            # is too large
+            reverse_end = np.random.randint(read_length, len(long_read))
+            reverse_start = reverse_end - read_length
+        reverse = long_read[reverse_start:reverse_end]
+        short_reads.append({'forward': forward, 'reverse': reverse})
+    
+    return short_reads
 
 @app.command()
-def main(
+def masking(
     # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    features_path: Path = PROCESSED_DATA_DIR / "test_features.csv",
-    model_path: Path = MODELS_DIR / "model.pkl",
-    predictions_path: Path = PROCESSED_DATA_DIR / "test_predictions.csv",
+    model_name: str = typer.Argument(help="Name of the model will be saved"),
+    pretrained_tokenizer_path: Path = typer.Option(default=..., help="Path to the pretrained tokenizer"),
+    trainer_config_path: Path = typer.Option(CONFIG_DIR / "trainer_config_base_uncased.json", help="Path to the trainer config"),
+    albert_config_path: Path = typer.Option(CONFIG_DIR / "albert_config_base_uncased.json", help="Path to the Albert config"),
+    builder: str = typer.Option(None, help="Path to the genome dataset"),
+    k: int = typer.Option(18, help="K-mer size"),
+    test_split: float = typer.Option(0.1, help="Test split ratio"),
+    chunk_size: int = typer.Option(128, help="Chunk size for grouping texts"),
+    preprocessing_name: str = typer.Option("gencode.v47.transcripts.k18.skipn.nocompress", help="Path to save the processed dataset"),
+    num_workers: int = typer.Option(16, help="Number of workers"),
+    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
     # -----------------------------------------
 ):
-    # ---- REPLACE THIS WITH YOUR OWN CODE ----
-    logger.info("Performing inference for model...")
-    for i in tqdm(range(10), total=10):
-        if i == 5:
-            logger.info("Something happened for iteration 5.")
-    logger.success("Inference complete.")
-    # -----------------------------------------
+    pass
 
+@app.command()
+def classification(
+    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
+    model_name: str = typer.Argument(help="Name of the model will be saved"),
+    pretrained_tokenizer_path: Path = typer.Option(default=None, help="Path to the pretrained tokenizer"),
+    pretrained_model_path: Path = typer.Option(default=None, help="Path to the pretrained model"),
+    trainer_config_path: Path = typer.Option(CONFIG_DIR / "trainer_config_base_repeatmasker.json", help="Path to the trainer config"),
+    albert_config_path: Path = typer.Option(CONFIG_DIR / "albert_config_base_uncased.json", help="Path to the Albert config"),
+    builder: str = typer.Option(None, help="Path to the genome dataset"),
+    k: int = typer.Option(18, help="K-mer size"),
+    test_split: float = typer.Option(0.1, help="Test split ratio"),
+    chunk_size: int = typer.Option(128, help="Chunk size for grouping texts"),
+    preprocessing_name: str = typer.Option("gencode.v47.transcripts.k18.skipn.nocompress", help="Path to save the processed dataset"),
+    num_workers: int = typer.Option(16, help="Number of workers"),
+    do_eval: bool = typer.Option(False, help="Enable evaluation mode"),
+    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
+    # -----------------------------------------
+):
+    debug_callback(debug)
+    if not trainer_config_path.exists():
+        # Try in the CONFIG_DIR
+        if (CONFIG_DIR / trainer_config_path).exists():
+            trainer_config_path = CONFIG_DIR / trainer_config_path
+        else:
+            logger.error("Path to the trainer config not exist.")
+    
+    # TODO: arg.load_from_cache:
+    logger.info("Loading pretokenized dataset")
+    lm_datasets = load_from_disk(os.path.join(PROCESSED_DATA_DIR, preprocessing_name, 'classification'))
+    if debug_mode:
+        logger.debug("Downsampling pretokenized dataset")
+        train_size = 1_000
+        test_size = int(0.1 * train_size)
+        lm_datasets = lm_datasets["train"].train_test_split(
+            train_size=train_size, test_size=test_size, seed=42)
+        logger.debug("Downsampling pretokenized eval dataset")
+        eval_size = int(0.1 * train_size)
+        train_eval_split = lm_datasets['train'].train_test_split(
+            test_size=eval_size, seed=42)
+        lm_datasets['eval'] = train_eval_split['test']
+        pass
+        
+    logger.info("Set training model...")
+
+    logger.info("Set model from pretrained ...")
+    model = AlbertForSequenceClassification.from_pretrained(os.path.join(MODELS_DIR, pretrained_model_path, 'final'))
+    model_num_parameters = model.num_parameters() / 1_000_000
+    logger.info(f"'Custom Genomics AlBERT number of parameters: {round(model_num_parameters)}M'")
+    logger.info("Original ALBERT number of parameters: 11M")
+    logger.info("Original BERT number of parameters: 110M")
+
+    logger.info("Loading pretrained tokenizer")
+    logger.info("Set tokenizer from pretrained ...")
+    tokenizer = PreTrainedTokenizerFast.from_pretrained(pretrained_model_name_or_path = os.path.join(MODELS_DIR, pretrained_model_path, 'final'),
+                                                        local_files_only=True)
+
+    tokenizer.post_processor = processors.TemplateProcessing(
+            single="[CLS]:0 $A:0 [SEP]:0",
+            pair="[CLS]:0 $A:0 [SEP]:0 $B:1 [SEP]:1",
+            special_tokens=[
+                ("[CLS]", tokenizer.convert_tokens_to_ids("[CLS]")),
+                ("[SEP]", tokenizer.convert_tokens_to_ids("[SEP]")),
+            ],
+        )
+    tokenizer.model_max_length = model.config.max_position_embeddings
+
+    data_collator = DataCollatorWithPadding(tokenizer)
+
+    trainer_args = TrainingArguments(**json.load(open(trainer_config_path, 'r')))
+    trainer_args.output_dir = os.path.join(MODELS_DIR, model_name)
+    trainer_args.dataloader_num_workers = num_workers
+    
+    logger.info("Preparing your data for training")
+ 
+    device = torch.device(device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"'Training in device {device.type}'")
+    
+    # Load individual metrics
+    accuracy = evaluate.load("accuracy")
+    f1 = evaluate.load("f1")
+    precision = evaluate.load("precision")
+    recall = evaluate.load("recall")
+    
+    logger.info("Using accuracy, f1, precision, and recall as classification scores")
+    
+    def compute_metrics(eval_pred):
+        predictions, labels = eval_pred
+        predictions = np.argmax(predictions, axis=1)
+        # Compute individual metrics
+        accuracy_result = accuracy.compute(predictions=predictions, references=labels)
+        f1_result = f1.compute(predictions=predictions, references=labels, average="micro")
+        precision_result = precision.compute(predictions=predictions, references=labels, average="micro")
+        recall_result = recall.compute(predictions=predictions, references=labels, average="micro")
+        
+        # Combine metrics into a single dictionary
+        combined_metrics = {
+            "accuracy": accuracy_result["accuracy"],
+            "f1": f1_result["f1"],
+            "precision": precision_result["precision"],
+            "recall": recall_result["recall"]
+        }
+        
+        return combined_metrics
+
+    try_mkdir(trainer_args.output_dir)
+    trainer = Trainer(
+        model=model,
+        args=trainer_args,
+        train_dataset=lm_datasets["train"],
+        eval_dataset=lm_datasets["test"],
+        processing_class=tokenizer,
+        data_collator=data_collator,
+        compute_metrics=compute_metrics,
+    )
+    # Evaluation
+    if do_eval:
+        logger.info("*** Evaluate ***")
+        metrics = trainer.evaluate(eval_dataset=lm_datasets["eval"])
+        metrics["eval_samples"] = len(lm_datasets["eval"])
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
+    # -----------------------------------------
+    pass
+
+@app.command()
+def processing_dataset(
+    input_file: Path = typer.Option(None, help="Path to the reads dataset"),
+    output_path: Path = typer.Option(None, help="Path to the output dataset"),
+    k: int = typer.Option(18, help="K-mer size"),
+    num_workers: int = typer.Option(16, help="Number of workers")
+):
+    if input_file.suffix in ['.fq.gz', '.fastq.gz', '.fq.bgz', '.fastq.bgz', 'fq', '.fastq']:
+        raw_reads = GenomeDataset(input_file, "fastq")
+        def generator_from_iterator():
+            for seq, rev, id in raw_reads:
+                short_reads = break_long_read(seq)
+                for pair in short_reads:
+                    yield {'pair': {'text': kmer_split(k, pair['forward']), 'text_pair': kmer_split(k, pair['reverse'])},
+                           'id': id}
+    elif input_file.suffix in ['.sam', '.bam', '.cram']:
+        raw_alignments = SAMDataset(input_file)
+        def generator_from_iterator():
+            for key, seq in raw_alignments.queries.items():
+                short_reads = break_long_read(seq)
+                for pair in short_reads:
+                    yield {'pair': {'text': kmer_split(k, pair['forward']), 'text_pair': kmer_split(k, pair['reverse'])},
+                           'id': key}
+    else:
+        raise ValueError("Unsupported file type")
+
+    logger.info("Create datasets from generator")
+    raw_dataset = Dataset.from_generator(generator_from_iterator, num_proc=num_workers)
+    logger.info(f"Datasets create size {len(raw_dataset)}")
+    try_mkdir(os.path.join(output_path, 'short_reads'))
+    raw_dataset.save_to_disk(os.path.join(output_path, 'short_reads'))
+
+@app.command()
+def quantify(
+    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
+    pretrained_model_name: Path = typer.Option(default=None, help="Path to the pretrained model"),
+    output_path: Path = typer.Option(None, help="Path to the output dataset"),
+    batch_size: int = typer.Option(16, help="Chunk size for grouping texts"),
+    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
+    # -----------------------------------------
+):
+    """
+    docstring
+    """
+
+    debug_callback(debug)
+        
+    logger.info("Set model from pretrained ...")
+    model = AlbertForSequenceClassification.from_pretrained(os.path.join(MODELS_DIR, pretrained_model_name, 'final'))
+    model_num_parameters = model.num_parameters() / 1_000_000
+    logger.info(f"'Custom Genomics AlBERT number of parameters: {round(model_num_parameters)}M'")
+    logger.info("Original ALBERT number of parameters: 11M")
+    logger.info("Original BERT number of parameters: 110M")
+
+    logger.info("Loading pretrained tokenizer")
+    logger.info("Set tokenizer from pretrained ...")
+    tokenizer = PreTrainedTokenizerFast.from_pretrained(pretrained_model_name_or_path = os.path.join(MODELS_DIR, pretrained_model_name, 'final'),
+                                                        local_files_only=True)
+
+    tokenizer.post_processor = processors.TemplateProcessing(
+            single="[CLS]:0 $A:0 [SEP]:0",
+            pair="[CLS]:0 $A:0 [SEP]:0 $B:1 [SEP]:1",
+            special_tokens=[
+                ("[CLS]", tokenizer.convert_tokens_to_ids("[CLS]")),
+                ("[SEP]", tokenizer.convert_tokens_to_ids("[SEP]")),
+            ],
+        )
+    tokenizer.model_max_length = model.config.max_position_embeddings
+        
+    # TODO: arg.load_from_cache:
+    logger.info("Loading and processing dataset")
+    processed_dataset = load_from_disk(os.path.join(output_path, 'short_reads'))
+    if debug_mode:
+        logger.debug("Downsampling pretokenized dataset")
+        dataset_size = 1_000
+        processed_dataset = processed_dataset.select(np.random.randint(len(processed_dataset), size=dataset_size))
+        pass
+
+    distributed_state = PartialState()
+
+    # Create a classification pipeline
+    classifier = pipeline("text-classification", model=model, tokenizer=tokenizer, top_k=None, torch_dtype=torch.bfloat16, device = distributed_state.device)
+
+    if distributed_state.is_main_process:
+        if not os.path.exists(output_path):
+            try_mkdir(output_path)
+            logger.info(f"Directory '{output_path}' created successfully.")
+        else:
+            logger.info(f"Directory '{output_path}' already exists.")
+
+    with distributed_state.split_between_processes(processed_dataset) as datasets:
+        results_bar = tqdm(classifier(KeyDataset(datasets, 'pair'), batch_size=batch_size, truncation=True), desc=f"classifying {distributed_state.device}", total=len(datasets))
+        class_scores = []
+        for i, results in enumerate(results_bar):
+            class_scores.append(results)
+        
+    distributed_state.wait_for_everyone()
+    class_scores = gather_object(class_scores)
+
+    if distributed_state.is_main_process:
+        with open(os.path.join(output_path, 'class_scores.pkl'), 'wb') as f:
+            pickle.dump(class_scores, f)
+        logger.info(f"Quantification finished. Saved in '{output_path}'")
+
+    pass
 
 if __name__ == "__main__":
     app()
