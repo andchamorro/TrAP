@@ -79,7 +79,7 @@ export ACCELERATE_ARGS="--multi_gpu \
     --dynamo_backend no \
     --mixed_precision fp16"
 
-export SCRIPT="../translast/modeling/train.py"
+export SCRIPT="../trap/modeling/train.py"
 
 export SCRIPT_ARGS=" \
     $MODEL_NAME \

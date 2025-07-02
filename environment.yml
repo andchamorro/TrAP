@@ -1,4 +1,4 @@
-name: translast
+name: trap
 channels:
   - conda-forge
 dependencies:

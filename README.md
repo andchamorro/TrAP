@@ -1,6 +1,6 @@
-# transLAST
+# A Transformers Analysis Pipeline (TrAP) to Evaluate Genome LINE-1 Sequence Content
 
-**transLAST** is a natural language processing (NLP) model primarily designed for detecting and analyzing of LINE-1 (L1) retroelement sequences in genomic data. Traditional methods for identifying LINE-1 elements rely on pattern matching and sequence alignment, which often struggle to detect novel or divergent LINE-1 sequences and to distinguish between segmental duplications and true LINE-1 copies.
+**TrAP** is a natural language processing (NLP) model primarily designed for detecting and analyzing of LINE-1 (L1) retroelement sequences in genomic data. Traditional methods for identifying LINE-1 elements rely on pattern matching and sequence alignment, which often struggle to detect novel or divergent LINE-1 sequences and to distinguish between segmental duplications and true LINE-1 copies.
 
 This project introduces an **alignment-free approach** to LINE-1 analysis using NLP and tokenization techniques, enabling more robust and scalable detection of LINE-1 retroelements in large-scale genomic datasets.
 
@@ -26,20 +26,20 @@ This project introduces an **alignment-free approach** to LINE-1 analysis using 
 
 ## Installation
 
-To install the required dependencies for **transLAST**, we recommend using **Anaconda** for environment management.
+To install the required dependencies for **TrAP**, we recommend using **Anaconda** for environment management.
 
 ### Step 1: Clone the repository
 
 ```bash
-git clone https://github.com/your-org/transLAST.git
-cd transLAST
+git clone https://github.com/andchamorro/TrAP.git
+cd TrAP
 ```
 
 ### Step 2: Create and activate the environment
 
 ```bash
-conda create -n translast python=3.10
-conda activate translast
+conda create -n trap python=3.10
+conda activate trap
 ```
 
 ### Step 3: Install dependencies
@@ -52,7 +52,7 @@ pip install -r requirements.txt
 
 ### Training a Model
 
-To train a model using `transLAST`, use the provided script:
+To train a model using `TrAP`, use the provided script:
 
 ```bash
 bash script/train_repeatmasker.sh \
@@ -61,7 +61,7 @@ bash script/train_repeatmasker.sh \
     --num-machines 1 \
     --model-name albert.l1hs_l1pa2.k18.32k \
     --task classification \
-    --tokenizer-path ../transLAST_runs/.../huggingface/fast \
+    --tokenizer-path ../data/tokenizer/fast \
     --processing-name gencode.v47.transcripts.k18.32k.skipn.nocompress/l1hs_l1pa2 \
     --trainer-config trainer_config_base_repeatmasker.json
 ```
@@ -129,7 +129,7 @@ This will generate `only` and `runon` indexes and perform quantification using S
 
 This script will:
 
-1. Use `translast/modeling/posprocessing.py` to filter read IDs based on `class_scores.pkl` in the `--output-dir`.
+1. Use `trap/modeling/posprocessing.py` to filter read IDs based on `class_scores.pkl` in the `--output-dir`.
 2. Use `seqkit` to extract matching reads from both FASTQ files.
 3. Run Salmon quantification using the filtered reads.
 

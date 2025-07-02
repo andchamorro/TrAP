@@ -104,15 +104,15 @@ build_index_if_needed "$ONLY_FASTA" "$ONLY_INDEX" "only" "$ONLY_BED"
 build_index_if_needed "$RUNON_FASTA" "$RUNON_INDEX" "runon" "$RUNON_BED"
 
 # ============================================
-# Filter reads using transLAST predictions
+# Filter reads using trap predictions
 # ============================================
 
 FILTERED_IDS_FILE="${OUTPUT_DIR}/filtered_ids.txt"
 FILTERED_R1="${OUTPUT_DIR}/filtered_R1.fastq.gz"
 FILTERED_R2="${OUTPUT_DIR}/filtered_R2.fastq.gz"
 
-echo "Filtering read IDs using transLAST predictions..."
-python ../translast/modeling/postprocessing.py filter-ids \
+echo "Filtering read IDs using trap predictions..."
+python ../trap/modeling/postprocessing.py filter-ids \
     --fastq "$R1_FASTQ" \
     --output-path "$OUTPUT_DIR" \
     --output-filtered-ids "$FILTERED_IDS_FILE"

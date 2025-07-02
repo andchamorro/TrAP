@@ -2,7 +2,7 @@
 # GLOBALS                                                                       #
 #################################################################################
 
-PROJECT_NAME = translast
+PROJECT_NAME = trap
 PYTHON_VERSION = 3.12.2
 PYTHON_INTERPRETER = python
 
@@ -28,14 +28,14 @@ clean:
 ## Lint using flake8 and black (use `make format` to do formatting)
 .PHONY: lint
 lint:
-	flake8 translast
-	isort --check --diff --profile black translast
-	black --check --config pyproject.toml translast
+	flake8 trap
+	isort --check --diff --profile black trap
+	black --check --config pyproject.toml trap
 
 ## Format source code with black
 .PHONY: format
 format:
-	black --config pyproject.toml translast
+	black --config pyproject.toml trap
 
 
 
@@ -58,7 +58,7 @@ create_environment:
 ## Make Dataset
 .PHONY: data
 data: requirements
-	$(PYTHON_INTERPRETER) translast/dataset.py
+	$(PYTHON_INTERPRETER) trap/dataset.py
 
 
 #################################################################################

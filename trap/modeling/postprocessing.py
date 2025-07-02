@@ -10,7 +10,7 @@ from datasets import Dataset, concatenate_datasets
 from loguru import logger
 from tqdm import tqdm
 
-app = typer.Typer(help="Filter read IDs based on class scores from transLAST quantification.")
+app = typer.Typer(help="Filter read IDs based on class scores from trap quantification.")
 
 def sanitize_paths(*args):
     """
@@ -78,7 +78,7 @@ def filter_ids(
     num_workers: int = typer.Option(4, help="Number of workers for dataset processing")
 ):
     """
-    Filter read IDs based on NEGATIVE class score from transLAST quantification.
+    Filter read IDs based on NEGATIVE class score from trap quantification.
     """
     if not fastq and not id_list:
         typer.echo("Error: You must provide either --fastq or --id-list.")

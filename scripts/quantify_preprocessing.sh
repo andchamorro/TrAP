@@ -71,7 +71,7 @@ export HF_LOCAL_HOME="HF_LOCAL"
 export HF_DATASETS_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 
-export SCRIPT="../translast/modeling/predict.py"
+export SCRIPT="../trap/modeling/predict.py"
 
 export SCRIPT_ARGS=" \
     --input-file $INPUT_FILE \

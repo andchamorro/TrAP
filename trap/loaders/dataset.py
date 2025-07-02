@@ -6,7 +6,7 @@ from Bio import bgzf, SeqIO
 
 from torch.utils.data import Dataset
 
-from translast.config.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from trap.config.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 class GenomeDataset(Dataset):
 
     def __init__(self, file_path, file_format, transform=None, target_transform=None, standardization=None):

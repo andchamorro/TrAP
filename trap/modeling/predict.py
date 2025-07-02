@@ -27,8 +27,8 @@ from datasets import load_from_disk, Dataset
 from accelerate import Accelerator, PartialState
 from accelerate.utils import gather_object
 
-# from translast.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
-from translast.config.config import CONFIG_DIR, MODELS_DIR, PROCESSED_DATA_DIR
+# from trap.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
+from trap.config.config import CONFIG_DIR, MODELS_DIR, PROCESSED_DATA_DIR
 
 START_TIME = time.strftime("%Y%m%d_%H%M%S")
 # DTYPE_MAP = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}

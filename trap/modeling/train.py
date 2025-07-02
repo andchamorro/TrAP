@@ -19,9 +19,9 @@ from datasets import load_from_disk
 from accelerate.test_utils.testing import get_backend
 import evaluate
 
-# from translast.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
-from translast.loaders.tokenizer import WholeKmerMaskingDataCollator
-from translast.config.config import CONFIG_DIR, MODELS_DIR, PROCESSED_DATA_DIR
+# from trap.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
+from trap.loaders.tokenizer import WholeKmerMaskingDataCollator
+from trap.config.config import CONFIG_DIR, MODELS_DIR, PROCESSED_DATA_DIR
 
 app = typer.Typer()
 
