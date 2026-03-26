@@ -1,0 +1,87 @@
+{% set name = "trap" %}
+{% set version = "0.0.1" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  git_url: ../  # Point the local git repository root
+  git_rev: HEAD # Use the current state of the repository
+
+build:
+  number: 0
+  noarch: python
+  script: {{ PYTHON }} -m pip install . --no-deps --no-build-isolation -vvv
+  entry_points:
+    - trap-train = trap.modeling.train:app
+    - trap-predict = trap.modeling.predict:app
+    - trap-postprocess = trap.modeling.postprocessing:app
+
+requirements:
+  host:
+    - python >=3.9,<3.13
+    - pip
+    - flit-core >=3.2,<4
+  run:
+    - python >=3.9,<3.13
+    # Core dependencies
+    - typer >=0.9
+    - loguru >=0.7
+    - tqdm >=4.65
+    - python-dotenv >=1.0
+    # Scientific computing
+    - numpy >=1.24
+    - pandas >=2.0
+    - scikit-learn >=1.3
+    # Deep learning
+    - pytorch >=2.0
+    - transformers >=4.30
+    - datasets >=2.14
+    - accelerate >=0.20
+    - tokenizers >=0.13
+    - sentencepiece >=0.1.99
+    # Bioinformatics
+    - biopython >=1.81
+    - pysam >=0.21
+    # Utilities
+    - si-prefix >=1.2
+
+test:
+  imports:
+    - trap
+    - trap.config
+    - trap.loaders
+    - trap.modeling
+    - trap.utils
+  commands:
+    - trap-train --help
+    - trap-predict --help
+    - trap-postprocess --help
+  requires:
+    - pytest >=7.0
+
+about:
+  home: https://github.com/andchamorro/TrAP
+  license: Apache-2.0
+  license_family: Apache
+  license_file: LICENSE
+  summary: Transformers Analysis Pipeline for detecting LINE-1 retroelements in genomic data
+  description: |
+    TrAP is a natural language processing (NLP) pipeline for detecting and analyzing 
+    LINE-1 (L1) retroelement sequences in genomic data. It uses transformer-based 
+    models with k-mer tokenization to provide alignment-free detection of LINE-1 
+    sequences, enabling more robust and scalable analysis of large-scale genomic datasets.
+    
+    Features:
+    - Alignment-free detection of LINE-1 sequences
+    - Transformer-based architecture (ALBERT) for sequence modeling
+    - Custom k-mer tokenizers and preprocessing pipelines
+    - Multi-GPU training with mixed precision
+    - Offline mode for reproducibility and secure environments
+  dev_url: https://github.com/andchamorro/TrAP
+  doc_url: https://github.com/andchamorro/TrAP/blob/main/README.md
+
+extra:
+  recipe-maintainers:
+    - andchamorro

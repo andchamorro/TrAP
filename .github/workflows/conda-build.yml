@@ -1,0 +1,124 @@
+name: Build and Test Conda Package
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }} with Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: ${{ matrix.python-version }}
+        channels: conda-forge,bioconda,defaults
+        channel-priority: strict
+    
+    - name: Create conda environment
+      shell: bash -l {0}
+      run: |
+        conda env create -f environment.yml -n trap-test
+    
+    - name: Run tests
+      shell: bash -l {0}
+      run: |
+        conda activate trap-test
+        pytest tests/ -v --cov=trap --cov-report=xml --cov-report=term-missing
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+
+  build-conda:
+    name: Build Conda Package on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: '3.11'
+        channels: conda-forge,bioconda,defaults
+        channel-priority: strict
+    
+    - name: Install conda-build
+      shell: bash -l {0}
+      run: |
+        conda install -y conda-build conda-verify boa
+    
+    - name: Build conda package
+      shell: bash -l {0}
+      run: |
+        conda mambabuild recipe/ --output-folder dist/
+    
+    - name: Upload conda package
+      uses: actions/upload-artifact@v3
+      with:
+        name: conda-package-${{ matrix.os }}
+        path: dist/
+        retention-days: 30
+    
+    - name: Test conda package installation
+      shell: bash -l {0}
+      run: |
+        # Install from local build
+        conda create -n test-install -c ./dist/ -c conda-forge -c bioconda trap --yes
+        conda activate test-install
+        
+        # Test CLI commands
+        trap-train --help
+        trap-predict --help
+        trap-postprocess --help
+        
+        # Test imports
+        python -c "import trap; from trap.utils.kmer import kmer_split"
+
+  lint:
+    name: Lint Conda Recipe
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: '3.11'
+        channels: conda-forge,bioconda,defaults
+        channel-priority: strict
+    
+    - name: Install linting tools
+      shell: bash -l {0}
+      run: |
+        conda install -y conda-build conda-verify
+    
+    - name: Lint recipe
+      shell: bash -l {0}
+      run: |
+        conda-build recipe/ --check
