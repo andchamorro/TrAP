@@ -96,7 +96,7 @@ def filter_ids(
                 results[e['label']].append(e['score'])
         return results
 
-    class_scores_id = class_scores_id.map(get_scores, remove_columns=['id', 'scores'], batched=True, num_proc=num_workers)
+    class_scores_id = class_scores_id.map(get_scores, remove_columns=['scores'], batched=True, num_proc=num_workers)
 
     df = class_scores_id.to_pandas().set_index('id')
     filtered = df[df['NEGATIVE'] < threshold]

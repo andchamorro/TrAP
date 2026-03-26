@@ -1,0 +1,62 @@
+[
+  {
+    "file": "trap/modeling/postprocessing.py",
+    "line": 99,
+    "summary": "filter_ids removes the 'id' column via remove_columns=['id','scores'] and then immediately calls set_index('id') on the resulting DataFrame, raising KeyError on every invocation.",
+    "failure_scenario": "get_scores writes 'id' to results, but remove_columns strips it from the mapped output dataset before line 101. class_scores_id.to_pandas().set_index('id') raises KeyError: 'id'. The filter_ids command never produces output under any input."
+  },
+  {
+    "file": "trap/utils/preprocessing_sequences.py",
+    "line": 102,
+    "summary": "dataset_loader evaluates test_size=(test_split + val_split) before the val_split is not None guard, crashing with TypeError on every default call where val_split=None.",
+    "failure_scenario": "dataset_loader('genome.fa.gz') with default val_split=None reaches line 102: 0.1 + None → TypeError before any split occurs. Both masking() and classification() callers pass args.val_split which defaults to None, so both preprocessing subcommands fail unless --val_split is explicitly provided."
+  },
+  {
+    "file": "trap/modeling/predict.py",
+    "line": 107,
+    "summary": "SAMDataset.__getitem__ uses self._index (the iterator cursor) instead of the resolved index argument, returning the wrong alignment record for any direct integer access.",
+    "failure_scenario": "ds[5] returns self._ids[self._index], not self._ids[5]. After iterating to exhaustion self._index == len(self._ids), so ds[0] raises IndexError. Mid-iteration, ds[k] returns a random element determined by iteration state rather than k."
+  },
+  {
+    "file": "trap/loaders/dataset.py",
+    "line": 60,
+    "summary": "The default _standardization regex was changed from r'[^ACTG]' (strips N) to r'[^ACTGN]' (preserves N), silently altering the sequences fed into k-mer tokenization for the entire training pipeline.",
+    "failure_scenario": "preprocessing_sequences.py constructs GenomeDataset and passes sequences through kmer_split. Previously N was stripped, so the tokenizer vocabulary contains no N-containing k-mers. After this change, k-mers like 'ACTGNACT' are generated and mapped to <unk> at inference time, corrupting predictions without any error."
+  },
+  {
+    "file": "trap/loaders/tokenizer.py",
+    "line": 25,
+    "summary": "random.randint(0, len(raw_datasets)) uses an inclusive upper bound, so index len(raw_datasets) is a valid return value and causes IndexError during tokenizer training.",
+    "failure_scenario": "When sampling 10,000 indices for max_sentence_length estimation, raw_datasets[len(raw_datasets)] raises IndexError. For a dataset of size n, at least one hit occurs in 10,000 draws with probability ≈1 − (n/(n+1))^10000 — near-certain for small datasets. Fix: random.randint(0, len(raw_datasets) - 1) or random.randrange(len(raw_datasets))."
+  },
+  {
+    "file": "trap/loaders/dataset.py",
+    "line": 91,
+    "summary": "GenomeDataset.__getitem__ now calls transform(seq, rev, id_) with three arguments; the prior API applied transform to each string independently, silently breaking callers that provide a unary transform.",
+    "failure_scenario": "Any code constructing GenomeDataset(path, fmt, transform=lambda s: s.upper()) gets TypeError: <lambda>() takes 1 positional argument but 3 were given on the first __getitem__ call. No production call site currently passes transform=, but the documented API contract is broken with no error at construction time."
+  },
+  {
+    "file": "trap/utils/kmer.py",
+    "line": 53,
+    "summary": "encoded_to_seq does not handle integer encoding aliases (2 or 3), so a round-trip using seq_to_encoded(seq, encoding=2) followed by encoded_to_seq(enc, encoding=2) silently returns the Unicode-encoded string unchanged.",
+    "failure_scenario": "seq_to_encoded('ACTG', encoding=2) encodes via the integer-2 branch. encoded_to_seq(result, encoding=2) falls through both conditions (which only check strings 'pairs'/'2-mers') and returns the raw Unicode characters. The error is silent; tests only exercise the round-trip with string aliases, leaving the integer path untested."
+  },
+  {
+    "file": "trap/utils/kmer.py",
+    "line": 85,
+    "summary": "kmer_split_batch is annotated as Iterator[str] but requires a sized, subscriptable sequence (calls len() and slice indexing), raising TypeError if a caller passes a generator as the annotation advertises.",
+    "failure_scenario": "kmer_split_batch((s for s in seqs), batch_size=32, k=18) raises TypeError: object of type 'generator' has no len() at the range() call. The annotation actively misleads callers; the docstring says 'Indexable sequence' which contradicts the type hint. Fix: change annotation to Sequence[str] or List[str]."
+  },
+  {
+    "file": "trap/modeling/predict.py",
+    "line": 308,
+    "summary": "processing_dataset defines a local standardization function that duplicates GenomeDataset._standardization character-for-character, creating two independent implementations that can silently diverge.",
+    "failure_scenario": "If the allowed character set is extended (e.g. 'U' for RNA processing), only one copy will be updated. The inference path (predict.py) and training path (dataset.py) would then produce different k-mer sequences for the same input, corrupting model inputs without any error. Canonical: use GenomeDataset._standardization or promote it to trap/utils/kmer.py."
+  },
+  {
+    "file": "trap/utils/kmer.py",
+    "line": 17,
+    "summary": "seq_to_encoded rebuilds the encoding lookup dict from scratch on every call; since kmer_split invokes it once per k-mer window, this adds O(calls × vocab_size) unnecessary allocations on the hot path.",
+    "failure_scenario": "Processing a 150 bp read with k=18 calls seq_to_encoded 133 times, each rebuilding the 16-entry (2-mer) or 64-entry (3-mer) dict via product(). At genomics scale (millions of reads), dict construction dominates over actual encoding. Fix: hoist the lookup tables to module-level constants (_PAIRS_TO_UNICODE, _CODONS_TO_UNICODE)."
+  }
+]

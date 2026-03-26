@@ -99,14 +99,14 @@ def dataset_loader(builder='gencode.v47.transcripts.fa.gz', pair=None, file_form
         pass
 
     logger.info("Creating train-test split")
-    dataset = dataset.train_test_split(test_size=(test_split + val_split), stratify_by_column = 'label')
-
     if val_split is not None:
+        dataset = dataset.train_test_split(test_size=(test_split + val_split), stratify_by_column='label')
         logger.info("Creating train-eval split")
-        test_eval_split = dataset['test'].train_test_split(test_size=test_split/(test_split + val_split), stratify_by_column = 'label')
+        test_eval_split = dataset['test'].train_test_split(test_size=test_split / (test_split + val_split), stratify_by_column='label')
         dataset['test'] = test_eval_split['train']
         dataset['eval'] = test_eval_split['test']
-        pass
+    else:
+        dataset = dataset.train_test_split(test_size=test_split, stratify_by_column='label')
 
     return dataset
 

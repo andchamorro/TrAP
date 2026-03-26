@@ -22,7 +22,7 @@ def train_sentencepiece(raw_datasets, google=False, out="./", name="sequencepiec
 
         # Byte length to determine the max_sentence_length on sentencepiece
         # TODO: Find a mathematic function to calculate the max sentence length of the kmer profile
-        sample_from_datasets = [raw_datasets[i] for i in [random.randint(0, len(raw_datasets)) for _ in range(10000)]]
+        sample_from_datasets = [raw_datasets[i] for i in [random.randrange(len(raw_datasets)) for _ in range(10000)]]
         max_sentence_length = max(map(lambda seq: len(kmer_split(k, seq).encode('utf-8')), sample_from_datasets))
 
         # Initialize an empty tokenizer

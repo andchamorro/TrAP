@@ -1,5 +1,4 @@
 import os
-import re
 import time
 import typer
 import json
@@ -104,7 +103,7 @@ class SAMDataset(Dataset):
                 index += len(self._ids)
             if index >= len(self._ids) or index < 0:
                 raise IndexError("The index is out of range.")
-            key = self._ids[self._index]
+            key = self._ids[index]
             return key, self.queries[key]
         else:
             raise TypeError("Invalid argument type.")
@@ -305,8 +304,7 @@ def processing_dataset(
     num_workers: int = typer.Option(16, help="Number of workers")
 ):
     break_fn = break_long_read if is_long else lambda x: [x]
-    def standardization(s):
-        return re.sub(r'[^ACTGN]', '', s.upper())
+    standardization = GenomeDataset._standardization
     if ''.join(input_file.suffixes) in ['.fq.gz', '.fastq.gz', '.fq.bgz', '.fastq.bgz', '.fq', '.fastq']:
         if pair_file is not None:
             def generator_from_iterator():
