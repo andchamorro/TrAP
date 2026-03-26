@@ -37,16 +37,20 @@ cd TrAP
 
 ### Step 2: Create and activate the environment
 
+Create the environment from the `environment.yml` file:
+
 ```bash
-conda create -n trap python=3.10
+conda env create -f environment.yml
+```
+
+Then, activate the environment:
+
+```bash
 conda activate trap
 ```
 
-### Step 3: Install dependencies
+This will install all necessary dependencies for running and developing `TrAP`.
 
-```bash
-pip install -r requirements.txt
-```
 
 ## Usage
 
@@ -134,3 +138,56 @@ This script will:
 3. Run Salmon quantification using the filtered reads.
 
 > **Note:** The `--output-dir` must match the one used in `quantify_repeatmasker.sh` so that `class_scores.pkl` is available for filtering.
+
+---
+
+## Testing
+
+This project uses `pytest` for testing. The tests are located in the `tests/` directory and mirror the structure of the `trap/` package.
+
+### Running Tests
+
+To run the full test suite:
+
+```bash
+pytest
+```
+
+To run tests with verbose output:
+
+```bash
+pytest -v
+```
+
+### Filtering Tests
+
+You can run specific tests using markers (`unit`, `integration`, `slow`):
+
+```bash
+# Run only fast unit tests
+pytest -m unit
+
+# Run only integration tests
+pytest -m integration
+
+# Skip slow tests
+pytest -m "not slow"
+```
+
+You can also run tests by file or directory:
+
+```bash
+# Run all tests in the utils directory
+pytest tests/utils/
+
+# Run a single test file
+pytest tests/utils/test_kmer.py
+```
+
+### Test Coverage
+
+To generate a test coverage report:
+
+```bash
+pytest --cov=trap
+```
