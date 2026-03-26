@@ -1,21 +1,18 @@
 import os
 import re
-import gzip
 import time
-import tokenize
 import typer
 import json
-from tqdm import tqdm
-from loguru import logger
-from typing import Optional, Union, List, Dict
-import numpy as np
-
-import pickle
-import pysam
-from Bio import bgzf, SeqIO
+from typing import Dict, List
 from pathlib import Path
 
-# TODO: Locate each imports
+import numpy as np
+import pickle
+import pysam
+from Bio import SeqIO
+from tqdm import tqdm
+from loguru import logger
+
 import torch
 from transformers import PreTrainedTokenizerFast, DataCollatorWithPadding
 from transformers import pipeline, BitsAndBytesConfig
@@ -29,6 +26,9 @@ from accelerate.utils import gather_object
 
 # from trap.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
 from trap.config.config import CONFIG_DIR, MODELS_DIR, PROCESSED_DATA_DIR
+from trap.loaders.dataset import GenomeDataset
+from trap.utils.io import genome_file_handle, try_mkdir
+from trap.utils.kmer import kmer_split
 
 START_TIME = time.strftime("%Y%m%d_%H%M%S")
 # DTYPE_MAP = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
@@ -45,14 +45,6 @@ def debug_callback(debug: bool = typer.Option(False, "--debug", "-d", help="Enab
         typer.echo("Debug mode enabled")
         debug_mode = True
 
-def try_mkdir(dir_name):
-    # Save the tokenizer
-    try:
-        os.makedirs(dir_name)
-    except FileExistsError:
-            # directory already exists
-            pass
-    
 def get_batches(items, batch_size):
     num_batches = (len(items) + batch_size - 1) // batch_size
     batches = []
@@ -64,83 +56,6 @@ def get_batches(items, batch_size):
         batches.append(batch)
 
     return batches
-
-def genome_file_handle(file_path):
-    if file_path.suffix == '.gz':
-        return gzip.open(file_path, 'rt')
-    elif file_path.suffix == '.bgz':
-        return bgzf.open(file_path, 'rt')
-    else :
-        return open(file_path, 'rt')
-
-class GenomeDataset(Dataset):
-
-    def __init__(self, file_path, file_format, transform=None, target_transform=None):
-        self.file_path = Path(file_path)
-        self.file_format = file_format
-        self.transform = transform
-        self.target_transform = target_transform
-        self.sequences, self.complement, self.ids = self._load_sequences()
-        self._index = 0  # Initialize the index for iteration
-
-    def _load_sequences(self):
-        sequences = []
-        complement = []
-        ids = []
-        with self._file_handle() as handle:
-            for record in SeqIO.parse(handle, self.file_format):
-                sequences.append(self._standardization(str(record.seq)))
-                complement.append(self._standardization(str(record.seq.reverse_complement())))
-                ids.append(str(record.id))
-                pass
-        return sequences, complement, ids
-    
-    def _standardization(self, sequence):
-        return re.sub(r'[^ACTGN]', '', sequence.upper())
-    
-    def _file_handle(self):
-        if self.file_path.suffix == '.gz':
-            return gzip.open(self.file_path, 'rt')
-        elif self.file_path.suffix == '.bgz':
-            return bgzf.open(self.file_path, 'rt')
-        else :
-            return open(self.file_path, 'rt')
-    
-    def __len__(self):
-        return len(self.sequences)
-    
-    def __iter__(self):
-        self._index = 0  # Reset the index for a new iteration
-        return self
-    
-    def __next__(self):
-        if self._index < len(self.sequences):
-            seq = self.sequences[self._index]
-            rev = self.complement[self._index]
-            i = self.ids[self._index]
-            self._index += 1
-            return seq, rev, i
-        else:
-            raise StopIteration
-    
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            return self.sequences[index], self.complement[index]
-        elif isinstance(index, int):
-            if index < 0:
-                index += len(self.sequences)
-            if index >= len(self.sequences) or index < 0:
-                raise IndexError("The index is out of range.")
-            seq = self.sequences[index]
-            rev = self.complement[index]
-            i = self.ids[index]
-            if self.transform:
-                seq, rev, i = self.transform(seq, rev, i)
-            if self.target_transform:
-                index = self.target_transform(index)
-            return seq, rev, i, index
-        else:
-            raise TypeError("Invalid argument type.")
 
 class SAMDataset(Dataset):
 
@@ -193,9 +108,6 @@ class SAMDataset(Dataset):
             return key, self.queries[key]
         else:
             raise TypeError("Invalid argument type.")
-
-def kmer_split(k: int, sequence: str) -> List[str]:
-    return " ".join([sequence[j: j + k] for j in range(len(sequence) - k + 1)])
 
 def break_long_read(long_read, read_length=150, mean_fragment_size=500, std_fragment_size=10, coverage=5):
     if len(long_read) < mean_fragment_size + std_fragment_size:

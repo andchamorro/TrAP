@@ -1,63 +1,81 @@
 import re
-import gzip
 from pathlib import Path
-from loguru import logger
-from Bio import bgzf, SeqIO
+from typing import Callable, Optional, Union
 
+from Bio import SeqIO
 from torch.utils.data import Dataset
 
-from trap.config.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
-class GenomeDataset(Dataset):
+from trap.utils.io import genome_file_handle
 
-    def __init__(self, file_path, file_format, transform=None, target_transform=None, standardization=None):
-        self.file_path = file_path
+
+class GenomeDataset(Dataset):
+    """A PyTorch Dataset for loading genome sequences from FASTA/FASTQ files.
+
+    Loads forward sequences and their reverse complements, with optional
+    transforms applied at access time.
+
+    Args:
+        file_path: Path to the genome file (supports .gz, .bgz, and plain text).
+        file_format: BioPython SeqIO format string (e.g. "fasta", "fastq").
+        transform: Optional callable applied to (seq, complement, id) tuples.
+        target_transform: Optional callable applied to the index.
+        standardization: Optional callable to clean sequences. Defaults to
+            stripping non-ACTGN characters and uppercasing.
+    """
+
+    def __init__(
+        self,
+        file_path: Union[str, Path],
+        file_format: str,
+        transform: Optional[Callable] = None,
+        target_transform: Optional[Callable] = None,
+        standardization: Optional[Callable] = None,
+    ):
+        self.file_path = Path(file_path)
         self.file_format = file_format
         self.transform = transform
         self.target_transform = target_transform
-        self.standardization = standardization if standardization is not None else self._standardization
+        self.standardization = (
+            standardization if standardization is not None else self._standardization
+        )
         self.sequences, self.complement, self.ids = self._load_sequences()
-        self._index = 0  # Initialize the index for iteration
+        self._index = 0
 
     def _load_sequences(self):
         sequences = []
         complement = []
         ids = []
-        with self._file_handle() as handle:
+        with genome_file_handle(self.file_path) as handle:
             for record in SeqIO.parse(handle, self.file_format):
                 sequences.append(self.standardization(str(record.seq)))
-                complement.append(self.standardization(str(record.seq.reverse_complement())))
+                complement.append(
+                    self.standardization(str(record.seq.reverse_complement()))
+                )
                 ids.append(str(record.id))
-                pass
         return sequences, complement, ids
-    
-    def _standardization(self, sequence):
-        return re.sub(r'[^ACTG]', '', sequence.upper())
-    
-    def _file_handle(self):
-        if self.file_path.endswith('.gz'):
-            return gzip.open(self.file_path, 'rt')
-        elif self.file_path.endswith('.bgz'):
-            return bgzf.open(self.file_path, 'rt')
-        else :
-            return open(self.file_path, 'rt')
-    
+
+    @staticmethod
+    def _standardization(sequence: str) -> str:
+        """Remove non-ACTGN characters and uppercase the sequence."""
+        return re.sub(r'[^ACTGN]', '', sequence.upper())
+
     def __len__(self):
         return len(self.sequences)
-    
+
     def __iter__(self):
-        self._index = 0  # Reset the index for a new iteration
+        self._index = 0
         return self
-    
+
     def __next__(self):
         if self._index < len(self.sequences):
             seq = self.sequences[self._index]
             rev = self.complement[self._index]
-            id = self.ids[self._index ]
+            id_ = self.ids[self._index]
             self._index += 1
-            return seq, rev, id
+            return seq, rev, id_
         else:
             raise StopIteration
-    
+
     def __getitem__(self, index):
         if isinstance(index, slice):
             return self.sequences[index], self.complement[index]
@@ -68,12 +86,11 @@ class GenomeDataset(Dataset):
                 raise IndexError("The index is out of range.")
             seq = self.sequences[index]
             rev = self.complement[index]
-            id = self.ids[index]
+            id_ = self.ids[index]
             if self.transform:
-                seq = self.transform(seq)
-                rev = self.transform(rev)
+                seq, rev, id_ = self.transform(seq, rev, id_)
             if self.target_transform:
                 index = self.target_transform(index)
-            return seq, rev, id, index
+            return seq, rev, id_, index
         else:
             raise TypeError("Invalid argument type.")

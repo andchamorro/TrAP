@@ -1,123 +1,17 @@
-import re
 import os
 import argparse
-import gzip
-from itertools import product
+
 import numpy as np
-from Bio import bgzf, SeqIO
 from loguru import logger
-from typing import List
 from collections import Counter
 
 from datasets import Dataset
 from transformers import PreTrainedTokenizerFast
 from tokenizers import processors
 
-def try_mkdir(dir_name):
-    # Save the tokenizer
-    try:
-        os.makedirs(dir_name)
-    except FileExistsError:
-            # directory already exists
-            pass
-
-class GenomeDataset(Dataset):
-
-    def __init__(self, file_path, file_format, transform=None, target_transform=None):
-        self.file_path = file_path
-        self.file_format = file_format
-        self.transform = transform
-        self.target_transform = target_transform
-        self.sequences, self.complement, self.ids = self._load_sequences()
-        self._index = 0  # Initialize the index for iteration
-
-    def _load_sequences(self):
-        sequences = []
-        complement = []
-        ids = []
-        with self._file_handle() as handle:
-            for record in SeqIO.parse(handle, self.file_format):
-                sequences.append(self._standardization(str(record.seq)))
-                complement.append(self._standardization(str(record.seq.reverse_complement())))
-                ids.append(str(record.id))
-                pass
-        return sequences, complement, ids
-    
-    def _standardization(self, sequence):
-        return re.sub(r'[^ACTGN]', '', sequence.upper())
-    
-    def _file_handle(self):
-        if self.file_path.endswith('.gz'):
-            return gzip.open(self.file_path, 'rt')
-        elif self.file_path.endswith('.bgz'):
-            return bgzf.open(self.file_path, 'rt')
-        else :
-            return open(self.file_path, 'rt')
-    
-    def __len__(self):
-        return len(self.sequences)
-    
-    def __iter__(self):
-        self._index = 0  # Reset the index for a new iteration
-        return self
-    
-    def __next__(self):
-        if self._index < len(self.sequences):
-            seq = self.sequences[self._index]
-            rev = self.complement[self._index]
-            i = self.ids[self._index]
-            self._index += 1
-            return seq, rev, i
-        else:
-            raise StopIteration
-    
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            return self.sequences[index], self.complement[index]
-        elif isinstance(index, int):
-            if index < 0:
-                index += len(self.sequences)
-            if index >= len(self.sequences) or index < 0:
-                raise IndexError("The index is out of range.")
-            seq = self.sequences[index]
-            rev = self.complement[index]
-            i = self.ids[index]
-            if self.transform:
-                seq, rev, i = self.transform(seq, rev, i)
-            if self.target_transform:
-                index = self.target_transform(index)
-            return seq, rev, i, index
-        else:
-            raise TypeError("Invalid argument type.")
-        
-# Seq compression
-def seq_to_encoded(seq, encoding=None):
-    # Define the nucleotides
-    nucleotides = ['A', 'C', 'G', 'T']
-    # TODO: Handle the padding if the seq is not div by 2
-    if encoding in ("pairs", "2-mers", 2):
-        # Generate all possible 2-mers
-        pairs = [''.join(p) for p in product(nucleotides, repeat=2)]
-        
-        # Create a dictionary with 2-mers as keys and Unicode characters as values
-        pairs_to_unicode = {pair: chr(65 + i) for i, pair in enumerate(pairs)}
-        return ''.join(pairs_to_unicode[seq[i:i+2]] for i in range(0, len(seq)-1, 2))
-    
-    # TODO: Handle the padding if the seq is not div by 3
-    if encoding in ("codons", "3-mers", 3):
-        # Generate all possible 3-mers (codons)
-        codons = [''.join(p) for p in product(nucleotides, repeat=3)]
-        # Create a dictionary with 3-mers as keys and Unicode characters as values
-        codons_to_unicode = {codon: chr(65 + i) for i, codon in enumerate(codons)}
-        return ''.join(codons_to_unicode[seq[i:i+3]] for i in range(0, len(seq)-2, 3))
-    # Do nothing
-    return seq
-
-def create_lambda_with_globals(s):
-    return eval(s, globals())
-
-def _kmer_split(k: int, sequence: str, encoding: str=None) -> List[str]:
-    return " ".join([seq_to_encoded(sequence[j: j + k], encoding=encoding) for j in range(len(sequence) - k + 1)])
+from trap.loaders.dataset import GenomeDataset
+from trap.utils.io import try_mkdir
+from trap.utils.kmer import kmer_split
 
 def get_label_list(raw_dataset, split="train") -> list[str]:
     """Get the list of labels from a multi-label dataset"""
@@ -182,14 +76,14 @@ def dataset_loader(builder='gencode.v47.transcripts.fa.gz', pair=None, file_form
         def generator_from_iterator():
             for (r1, rv1, i1), (r2, rv2, i2) in zip(raw_datasets, pair_datasets):
                 yield {'read_1': r1, 
-                       'kmers_1': _kmer_split(k, r1),
+                       'kmers_1': kmer_split(k, r1),
                        'read_2': r2, 
-                       'kmers_2': _kmer_split(k, r2), 
+                       'kmers_2': kmer_split(k, r2), 
                        'label': i1.split('|')[1].split('-')[0]}
     else:
         def generator_from_iterator():
             for seq, rev, id in raw_datasets:
-                yield {'sequence': seq, 'kmers': _kmer_split(k, seq), 'label': id.split('|')[1].split('-')[0]}
+                yield {'sequence': seq, 'kmers': kmer_split(k, seq), 'label': id.split('|')[1].split('-')[0]}
         pass
     
 

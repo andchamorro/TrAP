@@ -1,77 +1,21 @@
 import os
 import random
 import collections
+
 import numpy as np
 from loguru import logger
-from itertools import product
-from typing import List, Iterator
 
-from tokenizers import normalizers, pre_tokenizers, processors, BertWordPieceTokenizer, SentencePieceUnigramTokenizer, Regex 
+from tokenizers import normalizers, pre_tokenizers, processors
+from tokenizers import BertWordPieceTokenizer, SentencePieceUnigramTokenizer, Regex
 from transformers import PreTrainedTokenizerFast, default_data_collator
 
-def create_lambda_with_globals(s):
-    return eval(s, globals())
+from trap.utils.kmer import kmer_split, kmer_split_batch
 
-# Seq compression
-def seq_to_encoded(seq, encoding=None):
-    # Define the nucleotides
-    nucleotides = ['A', 'C', 'G', 'T']
-    # TODO: Handle the padding if the seq is not div by 2
-    if encoding in ("pairs", "2-mers", 2):
-        # Generate all possible 2-mers
-        pairs = [''.join(p) for p in product(nucleotides, repeat=2)]
-        
-        # Create a dictionary with 2-mers as keys and Unicode characters as values
-        pairs_to_unicode = {pair: chr(65 + i) for i, pair in enumerate(pairs)}
-        return ''.join(pairs_to_unicode[seq[i:i+2]] for i in range(0, len(seq)-1, 2))
-    
-    # TODO: Handle the padding if the seq is not div by 3
-    if encoding in ("codons", "3-mers", 3):
-        # Generate all possible 3-mers (codons)
-        codons = [''.join(p) for p in product(nucleotides, repeat=3)]
-        # Create a dictionary with 3-mers as keys and Unicode characters as values
-        codons_to_unicode = {codon: chr(65 + i) for i, codon in enumerate(codons)}
-        return ''.join(codons_to_unicode[seq[i:i+3]] for i in range(0, len(seq)-2, 3))
-    # Do nothing
-    return seq
-
-def encoded_to_seq(encoded_string, encoding=None):
-    # Define the nucleotides
-    nucleotides = ['A', 'C', 'G', 'T']
-    # TODO: Handle the padding if the seq is not div by 2
-    if encoding in ("pairs", "2-mers"):
-        # Generate all possible 2-mers
-        pairs = [''.join(p) for p in product(nucleotides, repeat=2)]
-        
-        # Create a dictionary with 2-mers as values and Unicode characters as keys
-        unicode_to_pairs = {chr(65 + i): pair for i, pair in enumerate(pairs)}
-        return ''.join(unicode_to_pairs[e] for e in encoded_string)
-    
-    # TODO: Handle the padding if the seq is not div by 3
-    if encoding in ("codos", "3-mers"):
-        # Generate all possible 3-mers (codons)
-        codons = [''.join(p) for p in product(nucleotides, repeat=3)]
-        # Create a dictionary with 3-mers as values and Unicode characters as keys
-        unicode_to_codons = {chr(65 + i): codon for i, codon in enumerate(codons)}
-        return ''.join(unicode_to_codons[e] for e in encoded_string)
-    # Do nothing
-    return encoded_string
-
-def _kmer_split(k: int, sequence: str, encoding: str=None) -> List[str]:
-    return " ".join([seq_to_encoded(sequence[j: j + k], encoding=encoding) for j in range(len(sequence) - k + 1)])
-
-def _dataset_batch(raw_datasets: Iterator[str], batch_size: int, k: int, encoding: str=None) -> Iterator[str]:
-    for i in range(0, len(raw_datasets), batch_size):
-        yield [_kmer_split(k, seq, encoding=encoding) for seq in raw_datasets[i:i + batch_size]]
 
 def train_sentencepiece(raw_datasets, google=False, out="./", name="sequencepiece_unigram", 
                         dataset_filter=lambda e: e, vocab_size=10000, batch_size=1024, k=17, max_sentence_length=500000, fast=False):
     
-    try:
-        os.makedirs(os.path.join(out, name))
-    except FileExistsError:
-        # directory already exists
-        pass
+    os.makedirs(os.path.join(out, name), exist_ok=True)
     
     if google:
         import sentencepiece as spm
@@ -79,11 +23,11 @@ def train_sentencepiece(raw_datasets, google=False, out="./", name="sequencepiec
         # Byte length to determine the max_sentence_length on sentencepiece
         # TODO: Find a mathematic function to calculate the max sentence length of the kmer profile
         sample_from_datasets = [raw_datasets[i] for i in [random.randint(0, len(raw_datasets)) for _ in range(10000)]]
-        max_sentence_length = max(map(lambda seq: len(_kmer_split(k, seq).encode('utf-8')), sample_from_datasets))
+        max_sentence_length = max(map(lambda seq: len(kmer_split(k, seq).encode('utf-8')), sample_from_datasets))
 
         # Initialize an empty tokenizer
         spm.SentencePieceTrainer.train(
-            sentence_iterator=map(lambda seq: _kmer_split(k, seq), raw_datasets), 
+            sentence_iterator=map(lambda seq: kmer_split(k, seq), raw_datasets), 
             model_writer=os.path.join(out, f'{name}.google'), model_type='unigram', vocab_size=vocab_size,
             # https://github.com/google/sentencepiece/issues/341#issuecomment-505471561
             # Try --input_sentence_size=1000000 (or smaller) which allows to sample sentences before training
@@ -97,7 +41,7 @@ def train_sentencepiece(raw_datasets, google=False, out="./", name="sequencepiec
         # And then train
         logger.info("Training tokenizer...")
         tokenizer.train_from_iterator(
-            _dataset_batch(raw_datasets, batch_size, k),
+            kmer_split_batch(raw_datasets, batch_size, k),
             vocab_size=vocab_size,
             show_progress=True,
             special_tokens=["[CLS]", "<pad>", "[SEP]", "<unk>", "[MASK]",],
@@ -156,7 +100,7 @@ def train_wordpiece(raw_datasets, out="./", name="wordpiece",
     # And then train
     logger.info("Training tokenizer...")
     tokenizer.train_from_iterator(
-        _dataset_batch(raw_datasets, batch_size, k),
+        kmer_split_batch(raw_datasets, batch_size, k),
         vocab_size=vocab_size,
         show_progress=True,
         special_tokens=["[CLS]", "<pad>", "[SEP]", "<unk>", "[MASK]"],

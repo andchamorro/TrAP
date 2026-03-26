@@ -20,8 +20,9 @@ from accelerate.test_utils.testing import get_backend
 import evaluate
 
 # from trap.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
-from trap.loaders.tokenizer import WholeKmerMaskingDataCollator
 from trap.config.config import CONFIG_DIR, MODELS_DIR, PROCESSED_DATA_DIR
+from trap.loaders.tokenizer import WholeKmerMaskingDataCollator
+from trap.utils.io import try_mkdir
 
 app = typer.Typer()
 
@@ -35,13 +36,7 @@ def debug_callback(debug: bool = typer.Option(False, "--debug", "-d", help="Enab
         typer.echo("Debug mode enabled")
         debug_mode = True
 
-def try_mkdir(dir_name):
-    # Save the tokenizer
-    try:
-        os.makedirs(dir_name)
-    except FileExistsError:
-            # directory already exists
-            pass
+
 class MaskingTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1,16 +1,11 @@
 import os
 import argparse
-from transformers import PreTrainedTokenizerFast, convert_slow_tokenizer
-import sentencepiece as spm
 from typing import Union, List
 
-def try_mkdir(dir_name):
-    # Save the tokenizer
-    try:
-        os.makedirs(dir_name)
-    except FileExistsError:
-            # directory already exists
-            pass
+import sentencepiece as spm
+from transformers import PreTrainedTokenizerFast, convert_slow_tokenizer
+
+from trap.utils.io import try_mkdir
 
 def convert_tokens_to_ids(spm_tokenizer, tokens: Union[str, List[str]]) -> Union[int, List[int]]:
     if tokens is None:

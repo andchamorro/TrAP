@@ -1,21 +1,21 @@
-import os
-import gzip
 import pickle
 from collections import defaultdict
 from pathlib import Path
+from typing import Union
 
 import typer
-from Bio import bgzf, SeqIO
+from Bio import SeqIO
 from datasets import Dataset, concatenate_datasets
 from loguru import logger
 from tqdm import tqdm
 
+from trap.utils.io import genome_file_handle, try_mkdir
+
 app = typer.Typer(help="Filter read IDs based on class scores from trap quantification.")
 
+
 def sanitize_paths(*args):
-    """
-    Convert input arguments to pathlib.Path objects if possible.
-    """
+    """Convert input arguments to pathlib.Path objects if possible."""
     paths = []
     for arg in args:
         if isinstance(arg, Path) or arg is None:
@@ -26,24 +26,6 @@ def sanitize_paths(*args):
             except Exception as e:
                 raise ValueError(f"Invalid path argument: {arg}") from e
     return paths
-
-def genome_file_handle(file_path):
-    """
-    Open FASTQ file with appropriate decompression based on extension.
-    """
-    file_path, = sanitize_paths(file_path)
-    if file_path.suffix == '.gz':
-        return gzip.open(file_path, 'rt')
-    elif file_path.suffix == '.bgz':
-        return bgzf.open(file_path, 'rt')
-    else:
-        return open(file_path, 'rt')
-
-def try_mkdir(path):
-    """
-    Create directory if it doesn't exist.
-    """
-    os.makedirs(path, exist_ok=True)
 
 def processing_ids_from_fastq(input_file: Path, num_workers: int = 4):
     """
