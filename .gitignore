@@ -185,7 +185,12 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# Agents configs
+# Installed agents
 AGENTS.md
+CLAUDE.md
 .agents/
+.opencode/
+.claude/
+.cursorrules
+.cursor/
 skills-lock.json
