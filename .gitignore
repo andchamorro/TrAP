@@ -1,15 +1,35 @@
 # Ignore all files in the .vscode folder by default
 .vscode/*
 
+# Draft
+.trap
+
+# Sphinx build output
+docs/_build/
+docs/api/_autosummary/
+
+# HPC site configs contain personal settings (account, email) — not committed.
+# Copy config/hpc/grace.yaml.example → config/hpc/grace.yaml to get started.
+config/hpc/grace.yaml
+config/hpc/*.local.yaml
+
 # Data
 /data/
+
+# Slurm Logs
+/logs/
 
 # Run
 /run/
 
-# Just the notebooks
-/notebooks/
+# Analysis outputs
+/results/
+
+# Notebooks: ignore all directory contents except committed .ipynb files.
+# notebooks/legacy/ holds draft notebooks
+/notebooks/*
 !/notebooks/*.ipynb
+/notebooks/legacy/
 
 # Just the finals model
 /models/

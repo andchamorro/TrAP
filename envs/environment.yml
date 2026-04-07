@@ -1,0 +1,74 @@
+name: trap
+channels:
+  - conda-forge
+  - pytorch      # needed for pytorch nightly / stable selection on macOS (MPS)
+  - defaults
+dependencies:
+  - python=3.12.2
+
+  # ---- formatting / linting ----
+  - black
+  - flake8
+  - isort
+
+  # ---- CLI & utilities ----
+  - pip
+  - typer
+  - loguru
+  - tqdm
+  - python-dotenv
+  - si-prefix
+
+  # ---- scientific computing ----
+  - numpy
+  - pandas
+  - scikit-learn
+
+  # ---- deep learning (CPU + MPS on macOS; swap pytorch-cuda for SLURM) ----
+  - pytorch
+  - torchvision
+
+  # ---- HuggingFace stack ----
+  - transformers
+  - datasets
+  - tokenizers
+  - sentencepiece
+  - evaluate
+
+  # ---- bioinformatics ----
+  - biopython
+  - pysam
+
+  # ---- performance / new pipeline deps ----
+  - polars
+  - numba
+  - pydantic
+
+  # ---- notebooks (kernel only; Jupyter runs from base env) ----
+  - ipython
+  - ipykernel
+  - matplotlib
+
+  # ---- plotting ----
+  - seaborn
+
+  # ---- Base R + IRkernel for manuscript R notebooks ----
+  - r-base
+  - r-irkernel
+  - r-languageserver
+  - r-cairo
+  - radian
+
+  # ---- pip-only packages ----
+  # ---- testing ----
+  - pytest
+  - pytest-cov
+
+  - pip:
+    - mkdocs
+    - "pyarrow>=21.0.0"
+    - dnaio
+    - pyfastx
+    - "accelerate>=1.0"  # conda-forge lags; pip gets current releases
+    - "optuna>=4.0"      # hyperparameter tuning (Trainer.hyperparameter_search backend)
+    # Note: run `pip install -e .` from repo root after env creation

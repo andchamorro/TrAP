@@ -35,7 +35,6 @@ dependencies:
   - pytorch-cuda=12.1
   - transformers=4.36.2
   - datasets=2.16.0
-  - accelerate=0.25.0
   - tokenizers=0.15.0
   - sentencepiece=0.1.99
   
@@ -43,10 +42,9 @@ dependencies:
   - biopython=1.81
   - pysam=0.22.0
   
-  # Development extras
+  # Development extras (kernel only; Jupyter runs from base env)
   - ipython=8.18.1
-  - jupyterlab=4.0.9
-  - notebook=7.0.6
+  - ipykernel
   
   # Conda build tools
   - conda-build >=3.27
@@ -56,4 +54,6 @@ dependencies:
   # Documentation
   - pip:
     - mkdocs==1.5.3
-    - -e .
+    - "accelerate>=1.0"
+    - "optuna>=4.0"
+    # Note: run `pip install -e .` from repo root after env creation
