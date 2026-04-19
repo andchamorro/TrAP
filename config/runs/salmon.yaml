@@ -1,0 +1,37 @@
+# Salmon-consistent canonical k-mer tokenizer (Design C scaffold; Design B default).
+#
+# Keeps k=17 and discretizes each canonical 17-mer into exactly one token, so a
+# 150bp read -> 134 tokens and a pair -> ~271 tokens (MAX_POSITION_CLS=280 fits).
+# Canonical encoding matches Salmon/jellyfish (A=0,C=1,G=2,T=3, min(fwd,revcomp)),
+# collapsing forward/reverse-complement reads.
+#
+# Default = Design B (pure canonical feature-hashing, no target index): the
+# empirical L1-vs-NEGATIVE separation from the L1 reference target index was weak
+# (young L1 ~5.5% conserved-hit vs NEGATIVE ~0.5%), so the transformer learns
+# discrimination from the full hashed k-mer pattern.  To enable the Design C
+# target index instead, submit stage 10 with SALMON_TARGET=1 (runs jellyfish on
+# L1_CORPUS; tune SALMON_MIN_COUNT / SALMON_MAX_TARGET / SALMON_NHASH).
+#
+# Usage:
+#   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/salmon.yaml
+#   SALMON_TARGET=1 SALMON_MIN_COUNT=50 bash scripts/slurm/submit_pipeline.sh \
+#       --run-config config/runs/salmon.yaml --from 10_tokenizer.slurm --to 10_tokenizer.slurm
+
+extends: default
+
+tokenizer:
+  algorithm: salmon
+  name: tokenizer.gencode.v48.k17.salmon
+
+mlm_processing_name: gencode.v48.k17.salmon
+processing_name: gencode.v48.k17.salmon/l1hs_l1pa2
+model_mlm: albert.gencode.v48.k17.salmon
+model_cls: albert.l1hs_l1pa2.v48.k17.salmon
+
+# Stage 10 is just an index-build / hash setup now (no EM training), so it is
+# fast and light.
+resources:
+  10:
+    time: "01:00:00"
+    cpus: 16
+    mem: 64G

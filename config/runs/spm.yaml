@@ -1,0 +1,31 @@
+# Google SentencePiece Unigram pipeline — multi-threaded, highest-quality vocab.
+# Set num_threads to match the node's SLURM cpus-per-task allocation.
+# Artifacts are namespaced with a .spm suffix.
+#
+# Usage:
+#   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/spm.yaml
+
+extends: default
+
+tokenizer:
+  algorithm: spm
+  name: tokenizer.gencode.v48.k17.32k.spm
+  num_threads: 48          # matches --cpus-per-task in 10_tokenizer.slurm
+  max_training_chars: 4000000000   # 4B post-k-mer chars (~75% of 256 GB @ 40x ratio)
+
+mlm_processing_name: gencode.v48.k17.32k.spm
+processing_name: gencode.v48.k17.32k.spm/l1hs_l1pa2
+model_mlm: albert.gencode.v48.k17.32k.spm
+model_cls: albert.l1hs_l1pa2.v48.k17.32k.spm
+
+# SPM Unigram: multi-threaded EM.  max_training_chars caps the post-k-mer
+# corpus fed to SPM; memory scales ~40x the corpus size.
+#   500M chars  →  ~20 GB   (original, 15% of 128 GB)
+#   4B   chars  →  ~160 GB  (target, ~62% of 256 GB)
+# Grace nodes have 384 GB; requesting 256 G leaves headroom.
+# Time scales with corpus size; 8h is sufficient for 4B chars at 48 threads.
+resources:
+  10:
+    time: "08:00:00"
+    cpus: 48
+    mem: 256G

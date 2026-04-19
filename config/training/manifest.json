@@ -1,0 +1,22 @@
+{
+  "trap_version": "0.0.1",
+  "git_commit": "c9ea395",
+  "timestamp_utc": "2026-05-29T16:42:49.238291+00:00",
+  "seed": 3469,
+  "tuning": {
+    "study_name": null,
+    "metric": "eval_f1",
+    "direction": "maximize",
+    "sampler": "tpe",
+    "pruner": "hyperband",
+    "n_trials": 2,
+    "best_value": 0.95,
+    "best_params": {
+      "learning_rate": 3.8591672904634544e-05,
+      "weight_decay": 0.026811811319118473,
+      "warmup_ratio": 0.1,
+      "per_device_train_batch_size": 8,
+      "num_train_epochs": 5
+    }
+  }
+}

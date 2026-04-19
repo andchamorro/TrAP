@@ -1,0 +1,70 @@
+# Generic HPC defaults for TrAP.
+# Committed — contains no personal or site-specific values.
+#
+# To target a real cluster, copy grace.yaml.example → grace.yaml (gitignored),
+# fill in the module versions and personal settings, and set:
+#   HPC_CONFIG=config/hpc/grace.yaml sbatch ...
+#
+# If HPC_CONFIG is unset, _common.sh looks for config/hpc/grace.yaml first;
+# if that doesn't exist it falls back to this file.
+
+hpc:
+  name: default
+
+conda:
+  env: trap
+
+# --- Module groups ---------------------------------------------------------
+# Values become shell variables in _common.sh:
+#   anaconda → ANACONDA_MODULE
+#   gcc      → GCC_MODULE
+#   cuda     → CUDA_MODULES  (list joined with spaces)
+#   bio      → BIO_MODULES   (list joined with spaces)
+
+modules:
+  anaconda: ""   # set in your site YAML (e.g. Anaconda3/2025.12-2)
+  gcc: ""        # set in your site YAML (e.g. GCC/13.2.0)
+  seqkit: ""     # optional standalone seqkit module for analysis stages
+
+  cuda: []       # modules loaded after anaconda for GPU stages
+
+  bio: []        # modules loaded after anaconda for bio stages
+                 # must include STAR, BWA, SAMtools, BEDTools, ART
+
+  optional: []   # loaded with try/ignore (e.g. WebProxy on Grace)
+
+# --- Required commands per module group ------------------------------------
+# Verified by check_required_commands() after module load.
+# Override in your site YAML if tools have non-standard command names.
+
+required_commands:
+  base:
+    - conda
+    - python
+  cuda:
+    - python
+    - nvidia-smi
+    - accelerate
+  bio:
+    - STAR
+    - bwa
+    - samtools
+    - bedtools
+    - art_illumina
+    - wget
+
+# --- GPU defaults ----------------------------------------------------------
+gpu:
+  gpus_per_node: 2
+  mixed_precision: bf16
+
+# --- SLURM submission settings ---------------------------------------------
+# Injected by submit_pipeline.sh / submit_tuning.sh as sbatch CLI flags.
+# These are never hard-coded into .slurm files.
+
+slurm:
+  account: ""          # HPC allocation; blank = use cluster default
+  mail_user: ""        # notification email; blank = no mail
+  mail_type: END,FAIL
+  partition_gpu: gpu   # --partition for GPU stages
+  gpu_gres: ""         # --gres for GPU stages; blank = not injected

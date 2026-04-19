@@ -1,0 +1,70 @@
+# Default pipeline run — mirrors _common.sh hardcoded fallbacks.
+# Used as the base for algorithm-specific variants via `extends: default`.
+# All values are overridable by environment variables (env > YAML > _common.sh).
+#
+# Usage:
+#   RUN_CONFIG=config/runs/default.yaml bash scripts/slurm/submit_pipeline.sh
+#   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/default.yaml
+
+# ── Tokenizer ──────────────────────────────────────────────────────────────
+tokenizer:
+  algorithm: bpe           # bpe | spm | unigram | wordpiece
+  name: tokenizer.gencode.v48.k17.32k
+  num_threads: 16          # parallel EM threads — spm only
+
+# ── K-mer / model hyperparameters ──────────────────────────────────────────
+k: 17
+vocab: 32000
+max_position: 1280
+seed: 3469
+
+# ── Output names (determine subdirs under models/ and data/processed/) ─────
+mlm_processing_name: gencode.v48.k17.32k
+processing_name: gencode.v48.k17.32k/l1hs_l1pa2
+model_mlm: albert.gencode.v48.k17.32k
+model_cls: albert.l1hs_l1pa2.v48.k17.32k
+
+# ── Input data (relative to repo root unless absolute) ─────────────────────
+gencode_fasta: data/external/gencode.v48.transcripts.fa.gz
+l1_r1: data/external/l1hs_l1pa2_negative.5x_R1.fq
+l1_r2: data/external/l1hs_l1pa2_negative.5x_R2.fq
+
+# ── Config file references (relative to repo root unless absolute) ──────────
+albert_config: config/albert_config_k17_v48.json
+mlm_trainer_config: config/training/mlm.json
+cls_trainer_config: config/training/classification_final.json
+tokenizer_config: config/datasets/l1hs_l1pa2_v48_k17.yaml
+
+# ── Per-stage SLURM resources ───────────────────────────────────────────────
+# Passed as sbatch CLI flags by submit_pipeline.sh, overriding the #SBATCH
+# directives in each .slurm file.  Override individual stages in variant
+# configs (e.g. bpe.yaml, spm.yaml) without touching the .slurm files.
+resources:
+  0:
+    time: "04:00:00"
+    cpus: 8
+    mem: 64G
+  10:
+    time: "02:00:00"
+    cpus: 48
+    mem: 128G
+  20:
+    time: "03:00:00"
+    cpus: 48
+    mem: 160G
+  21:
+    time: "00:30:00"
+    cpus: 4
+    mem: 32G
+  30:
+    time: "48:00:00"
+    cpus: 16
+    mem: 128G
+  40:
+    time: "24:00:00"
+    cpus: 16
+    mem: 128G
+  50:
+    time: "04:00:00"
+    cpus: 16
+    mem: 128G

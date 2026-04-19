@@ -1,0 +1,26 @@
+# BPE tokenizer pipeline — fast training, no corpus cap needed.
+# Artifacts are namespaced with a .bpe suffix so this run can coexist
+# with spm or unigram runs in the same models/ and data/processed/ trees.
+#
+# Usage:
+#   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/bpe.yaml
+
+extends: default
+
+tokenizer:
+  algorithm: bpe
+  name: tokenizer.gencode.v48.k17.32k.bpe
+
+mlm_processing_name: gencode.v48.k17.32k.bpe
+processing_name: gencode.v48.k17.32k.bpe/l1hs_l1pa2
+model_mlm: albert.gencode.v48.k17.32k.bpe
+model_cls: albert.l1hs_l1pa2.v48.k17.32k.bpe
+
+# BPE tokenizer completes in <15 min; no suffix array, no multi-threading needed.
+# Corpus is subsampled to DEFAULT_MAX_TRAINING_CHARS (500M post-k-mer chars) so
+# the BpeTrainer word-frequency HashMap stays well under the memory cap.
+resources:
+  10:
+    time: "01:00:00"
+    cpus: 8
+    mem: 32G

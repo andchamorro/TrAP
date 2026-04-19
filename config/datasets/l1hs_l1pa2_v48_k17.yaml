@@ -1,0 +1,33 @@
+# TrAP dataset build — L1HS / L1PA / NEGATIVE, GENCODE v48, k=17 (plan §6.2).
+#
+# Canonical record of the synthetic short-read RNA-seq dataset for the clean
+# re-do. Loadable as trap.config.schemas.DatasetBuildSchema via load_config().
+# scripts/slurm/_common.sh mirrors these values so the SLURM stages and this
+# file stay in sync; the manifest written by the dataset stage references it.
+
+k: 17
+max_position_embeddings: 1280        # paired R1+R2 (~2x528) + headroom (§11)
+test_split: 0.2
+val_split: 0.2
+class_threshold: 10                  # drop labels with < N reads
+num_proc: 48                         # Grace Cascade Lake: 48 cores/node
+chunk_size: 1280                      # MLM grouping block = max_position_embeddings;
+                                     # MUST equal max_position_embeddings or positions
+                                     # above chunk_size are never trained (was 128: bug)
+padding: max_length
+split_strategy: transcript-level     # DR-6: no read-level leakage (reviewer §12/#15)
+
+# ART Illumina paired-end simulation (§7 of the reviewer-response export; fixes S1)
+art:
+  coverage: 5                        # -f 5
+  read_length: 150                   # -l 150
+  frag_mean: 500                     # -m 500
+  frag_sd: 10                        # -s 10
+  ss: MSv3                           # -ss MSv3
+  paired: true                       # -p
+
+# STAR multi-mapping (§8/§16; captured into the manifest)
+star:
+  outFilterMultimapNmax: 100
+  winAnchorMultimapNmax: 100
+  version: 2.7.11b

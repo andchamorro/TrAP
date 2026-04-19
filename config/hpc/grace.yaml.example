@@ -1,0 +1,39 @@
+# Grace (TAMU HPRC) site configuration — example template.
+# Copy this file to config/hpc/grace.yaml (gitignored), then fill in your
+# personal details.  grace.yaml will be loaded automatically by _common.sh.
+#
+# Run 'module spider <name>' on Grace to confirm module versions.
+
+extends: default
+
+hpc:
+  name: grace
+
+modules:
+  anaconda: Anaconda3/2025.12-2
+  gcc: GCC/13.2.0
+  jellyfish: Jellyfish/2.3.1   # requires GCC_MODULE to be loaded first
+
+  cuda:
+    - GCCcore/13.2.0
+    - CUDA/13.1.0
+    - NCCL/2.20.5-CUDA-12.4.1
+
+  bio:
+    - GCCcore/13.2.0
+    - GCC/13.2.0
+    - STAR/2.7.11b
+    - BWA/0.7.18
+    - SAMtools/1.21
+    - BEDTools/2.31.1
+    - ART/2.5.8       # verify: module spider ART
+
+  optional:
+    - WebProxy
+
+slurm:
+  account: ""                    # <-- your TAMU account (e.g. 123456789)
+  mail_user: "your@email.edu"    # <-- your notification email
+  mail_type: END,FAIL
+  partition_gpu: gpu
+  gpu_gres: gpu:a100:2           # A100 40 GB; use gpu:a40:2 for A40 nodes
