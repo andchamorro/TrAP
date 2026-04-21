@@ -221,3 +221,47 @@ class TestKmerSplitBatch:
         enc_tokens = batches[0][0].split()
         # Each 4-bp k-mer encoded as 2-mers => 2 chars per token
         assert all(len(t) == 2 for t in enc_tokens)
+
+    @pytest.mark.unit
+    def test_generator_input_raises_type_error(self):
+        """kmer_split_batch requires a Sequence (len + subscript); a bare generator must fail."""
+        gen = (s for s in ["ACTGAC", "TTTTTT"])
+        with pytest.raises(TypeError):
+            list(kmer_split_batch(gen, batch_size=10, k=3))
+
+
+# -----------------------------------------------------------------------
+# Integer-alias roundtrip (cross-encoding)
+# -----------------------------------------------------------------------
+
+
+class TestIntegerAliasRoundtrip:
+    """Integer aliases (2, 3) must be accepted on both encode and decode sides."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("enc_alias,dec_alias", [
+        (2, 2),
+        (2, "pairs"),
+        ("pairs", 2),
+        (2, "2-mers"),
+        ("2-mers", 2),
+    ])
+    def test_2mer_roundtrip_cross_alias(self, enc_alias, dec_alias):
+        original = "ACTGACTG"
+        encoded = seq_to_encoded(original, encoding=enc_alias)
+        decoded = encoded_to_seq(encoded, encoding=dec_alias)
+        assert decoded == original
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("enc_alias,dec_alias", [
+        (3, 3),
+        (3, "codons"),
+        ("codons", 3),
+        (3, "3-mers"),
+        ("3-mers", 3),
+    ])
+    def test_3mer_roundtrip_cross_alias(self, enc_alias, dec_alias):
+        original = "ACTGAC"
+        encoded = seq_to_encoded(original, encoding=enc_alias)
+        decoded = encoded_to_seq(encoded, encoding=dec_alias)
+        assert decoded == original
