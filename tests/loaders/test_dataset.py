@@ -60,21 +60,22 @@ class TestStandardization:
         assert result == "ACTG"
 
     @pytest.mark.unit
-    def test_default_standardization_keeps_n(self):
+    def test_default_standardization_strips_n(self):
+        # N residues are stripped per the k=17/v48 vocabulary decision
+        # (2026-05-28): pure ACTG vocabulary, no N token.
         result = GenomeDataset._standardization("ACTGnNn")
-        # Lowercase 'n' becomes uppercase 'N' (3 total N chars)
-        assert result == "ACTGNNN"
+        assert result == "ACTG"
 
     @pytest.mark.unit
-    def test_default_standardization_strips_non_actgn(self):
+    def test_default_standardization_strips_non_actg(self):
         result = GenomeDataset._standardization("ACXTYGRN")
-        assert result == "ACTGN"
+        assert result == "ACTG"
 
     @pytest.mark.integration
     def test_loaded_sequences_are_clean(self, fasta_path):
         ds = GenomeDataset(fasta_path, "fasta")
         for seq in ds.sequences:
-            assert all(c in "ACTGN" for c in seq)
+            assert all(c in "ACTG" for c in seq)
 
     @pytest.mark.integration
     def test_custom_standardization(self, fasta_path):
@@ -87,11 +88,37 @@ class TestStandardization:
             assert "N" not in seq
 
     @pytest.mark.integration
-    def test_complement_sequences_are_loaded(self, fasta_path):
+    def test_reverse_complement_not_precomputed(self, fasta_path):
+        # The reverse complement is no longer eagerly stored (computed on demand
+        # by trap.utils.sequence.reverse_complement where needed).
         ds = GenomeDataset(fasta_path, "fasta")
-        assert len(ds.complement) == len(ds.sequences)
-        for comp in ds.complement:
-            assert all(c in "ACTGN" for c in comp)
+        assert not hasattr(ds, "complement")
+
+    @pytest.mark.integration
+    def test_n_density_tracked(self, tmp_path):
+        # Eager mode: stats available immediately after construction.
+        clean = tmp_path / "clean.fa"
+        clean.write_text(">s1\nACTGACTG\n")
+        ds = GenomeDataset(clean, "fasta")
+        assert ds.stripped_bases == 0
+        assert ds.total_bases == 8
+
+        heavy = tmp_path / "heavy.fa"
+        heavy.write_text(">s1\nACTGNNNN\n")
+        ds2 = GenomeDataset(heavy, "fasta")
+        assert ds2.stripped_bases == 4
+        assert ds2.total_bases == 8
+
+    @pytest.mark.integration
+    def test_n_density_tracked_lazy(self, tmp_path):
+        # Lazy mode: stats are accumulated during iteration, not at construction.
+        heavy = tmp_path / "heavy.fa"
+        heavy.write_text(">s1\nACTGNNNN\n")
+        ds = GenomeDataset(heavy, "fasta", lazy=True)
+        assert ds.stripped_bases == 0  # not yet loaded
+        list(ds)  # consume the iterator
+        assert ds.stripped_bases == 4
+        assert ds.total_bases == 8
 
 
 # -----------------------------------------------------------------------
@@ -111,9 +138,8 @@ class TestGenomeDatasetIteration:
         ds = GenomeDataset(fasta_path, "fasta")
         items = list(ds)
         assert len(items) == 3
-        for seq, rev, id_ in items:
+        for seq, id_ in items:
             assert isinstance(seq, str)
-            assert isinstance(rev, str)
             assert isinstance(id_, str)
 
     @pytest.mark.integration
@@ -143,14 +169,14 @@ class TestGenomeDatasetGetItem:
     @pytest.mark.integration
     def test_getitem_positive_index(self, fasta_path):
         ds = GenomeDataset(fasta_path, "fasta")
-        seq, rev, id_, idx = ds[0]
+        seq, id_, idx = ds[0]
         assert id_ == "seq1"
         assert idx == 0
 
     @pytest.mark.integration
     def test_getitem_negative_index(self, fasta_path):
         ds = GenomeDataset(fasta_path, "fasta")
-        seq, rev, id_, idx = ds[-1]
+        seq, id_, idx = ds[-1]
         assert id_ == "seq3"
 
     @pytest.mark.integration
@@ -174,17 +200,16 @@ class TestGenomeDatasetGetItem:
     @pytest.mark.integration
     def test_getitem_slice(self, fasta_path):
         ds = GenomeDataset(fasta_path, "fasta")
-        seqs, comps = ds[0:2]
+        seqs = ds[0:2]
         assert len(seqs) == 2
-        assert len(comps) == 2
 
     @pytest.mark.integration
     def test_transform_applied(self, fasta_path):
-        def upper_transform(seq, rev, id_):
-            return seq.lower(), rev.lower(), id_.upper()
+        def upper_transform(seq, id_):
+            return seq.lower(), id_.upper()
 
         ds = GenomeDataset(fasta_path, "fasta", transform=upper_transform)
-        seq, rev, id_, idx = ds[0]
+        seq, id_, idx = ds[0]
         assert seq == seq.lower()
         assert id_ == id_.upper()
 
@@ -193,5 +218,51 @@ class TestGenomeDatasetGetItem:
         ds = GenomeDataset(
             fasta_path, "fasta", target_transform=lambda i: i * 10
         )
-        seq, rev, id_, idx = ds[1]
+        seq, id_, idx = ds[1]
         assert idx == 10
+
+    @pytest.mark.integration
+    def test_unary_transform_raises_type_error(self, fasta_path):
+        """A unary lambda (old API) must raise TypeError on first __getitem__."""
+        ds = GenomeDataset(fasta_path, "fasta", transform=lambda s: s)
+        with pytest.raises(TypeError):
+            _ = ds[0]
+
+
+# -----------------------------------------------------------------------
+# Lazy streaming mode
+# -----------------------------------------------------------------------
+
+class TestLazyMode:
+    """GenomeDataset(lazy=True) streams from disk; no RAM pre-load."""
+
+    @pytest.mark.unit
+    def test_lazy_len_raises(self, fasta_path):
+        ds = GenomeDataset(fasta_path, "fasta", lazy=True)
+        with pytest.raises(TypeError, match="lazy"):
+            len(ds)
+
+    @pytest.mark.unit
+    def test_lazy_getitem_raises(self, fasta_path):
+        ds = GenomeDataset(fasta_path, "fasta", lazy=True)
+        with pytest.raises(TypeError, match="lazy"):
+            _ = ds[0]
+
+    @pytest.mark.integration
+    def test_lazy_iter_yields_same_sequences(self, fasta_path):
+        eager = GenomeDataset(fasta_path, "fasta", lazy=False)
+        lazy  = GenomeDataset(fasta_path, "fasta", lazy=True)
+        assert list(eager) == list(lazy)
+
+    @pytest.mark.integration
+    def test_lazy_iter_is_reentrant(self, fasta_path):
+        """Each iter() call opens a fresh file handle."""
+        ds = GenomeDataset(fasta_path, "fasta", lazy=True)
+        first  = list(ds)
+        second = list(ds)
+        assert first == second
+
+    @pytest.mark.integration
+    def test_lazy_sequences_not_loaded(self, fasta_path):
+        ds = GenomeDataset(fasta_path, "fasta", lazy=True)
+        assert ds.sequences is None
