@@ -1,0 +1,39 @@
+# Optuna hyperparameter search — ALBERT masked-language-model pretraining.
+#
+# Consumed by `python -m trap.modeling.tune masking` (and
+# scripts/slurm/tune_mlm.slurm). Full 40-epoch trials are prohibitive, so each
+# trial runs a short PROXY schedule (`max_trial_epochs`) and HyperbandPruner
+# kills the rest; the winning lr/wd/warmup then feed the full
+# config/training/mlm.json (stage 30).
+#
+# `finalize` writes config/training/mlm.tuned.json.
+
+metric: eval_loss
+direction: minimize
+n_trials: 12
+sampler: tpe
+pruner: hyperband
+seed: 3469
+max_trial_epochs: 5
+base_trainer_config: config/training/mlm.json
+
+search_space:
+  learning_rate:
+    sampler: loguniform
+    low: 1.0e-5
+    high: 5.0e-4
+  weight_decay:
+    sampler: uniform
+    low: 0.0
+    high: 0.1
+  warmup_ratio:
+    sampler: choice
+    # Ratios, not absolute steps: HuggingFace scales each to the trial's OWN total
+    # steps, so the 5-epoch proxy (optionally subsampled) and the full 40-epoch run
+    # get the same warmup FRACTION. Scale-invariant -> the tuned value transfers
+    # correctly to the full run and never goes stale when the dataset is rebuilt.
+    values: [0.0, 0.05, 0.1]
+
+fixed:
+  bf16: true
+  eval_strategy: epoch

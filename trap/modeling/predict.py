@@ -1,275 +1,194 @@
+"""Inference / quantification entry points for TrAP.
+
+Phase-1 quick wins applied
+--------------------------
+QW-1   processing_dataset: flat generator {r1_seq, r2_seq, id} + batched=True
+        tokenise map (kmer_split runs in parallel via num_proc).
+QW-4   save_processing defaults to False; no intermediate Arrow unless asked.
+QW-5   quantify: DataLoader + torch.inference_mode + torch.autocast.
+QW-6   Dynamic padding (padding=False in tokenise + DataCollatorWithPadding
+        with pad_to_multiple_of=64 at inference).
+QW-8   quantify: per-rank Parquet writer (id, L1HS, L1PA, NEGATIVE); no pickle
+        accumulation in host RAM.
+QW-9   torch.compile only on CUDA (mode=reduce-overhead); skipped on MPS/CPU.
+QW-10  TemplateProcessing no longer re-applied at runtime in quantify/*
+        (it is baked into the tokenizer at save time by trap/loaders/tokenizer.py).
+        processing_dataset still applies it as a backward-compat safety net.
+QW-11  break_long_read accepts an optional numpy Generator for seeded runs.
+QW-12  SAMDataset streams from pysam instead of loading the whole file into RAM.
+
+Phase-2 changes (DR-2)
+-----------------------
+SAMDataset    → imported from trap.loaders.alignments (canonical module).
+break_long_read → imported from trap.utils.sequence (canonical module).
+standardize   → imported from trap.utils.sequence (strips N; k=17/v48 decision).
+"""
+
+from __future__ import annotations
+
 import os
 import time
-import typer
-import json
-from typing import Dict, List
 from pathlib import Path
 
-import numpy as np
-import pickle
-import pysam
 from Bio import SeqIO
-from tqdm import tqdm
-from loguru import logger
-
-import torch
-from transformers import PreTrainedTokenizerFast, DataCollatorWithPadding
-from transformers import pipeline, BitsAndBytesConfig
-from transformers.pipelines import TextClassificationPipeline
-from transformers.pipelines.base import GenericTensor
-from tokenizers import processors
-from datasets import load_from_disk, Dataset
-
 from accelerate import Accelerator, PartialState
-from accelerate.utils import gather_object
+from datasets import Dataset, load_from_disk
+from loguru import logger
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import (
+    DataCollatorWithPadding,
+    PreTrainedTokenizerFast,
+)
+import typer
 
-# from trap.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
 from trap.config.config import CONFIG_DIR, MODELS_DIR, PROCESSED_DATA_DIR
+from trap.config.verbosity import set_verbosity
+from trap.loaders.alignments import SAMDataset
 from trap.loaders.dataset import GenomeDataset
+from trap.loaders.salmon_tokenizer import SalmonKmerTokenizer
+from trap.loaders.tokenizer import load_kmer_tokenizer
+from trap.modeling._inference import (
+    autocast_ctx,
+    build_score_schema,
+    resolve_device,
+    scores_table,
+)
+from trap.modeling.train import _resolve_precision
 from trap.utils.io import genome_file_handle, try_mkdir
 from trap.utils.kmer import kmer_split
+from trap.utils.seeding import set_global_seed
+from trap.utils.sequence import break_long_read, reverse_complement
+from trap.utils.sequence import standardize as _standardize_sequence
+
+# Back-compat aliases — these helpers moved to trap.modeling._inference.
+_autocast_ctx = autocast_ctx
+_resolve_device = resolve_device
 
 START_TIME = time.strftime("%Y%m%d_%H%M%S")
-# DTYPE_MAP = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
 
 app = typer.Typer()
 
 debug_mode = False
-def debug_callback(debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")):
-    """
-    Callback function to handle the debug flag.
-    """
+
+
+def debug_callback(debug: bool = typer.Option(False, "--debug", "-d")):
     global debug_mode
     if debug:
         typer.echo("Debug mode enabled")
         debug_mode = True
 
-def get_batches(items, batch_size):
-    num_batches = (len(items) + batch_size - 1) // batch_size
-    batches = []
 
-    for i in range(num_batches):
-        start_index = i * batch_size
-        end_index = min((i + 1) * batch_size, len(items))
-        batch = items[start_index:end_index]
-        batches.append(batch)
+# Device/dtype helpers (resolve_device, autocast_ctx) and the Parquet score
+# helpers (build_score_schema, scores_table) now live in trap.modeling._inference;
+# _autocast_ctx / _resolve_device aliases above keep existing imports working.
 
-    return batches
 
-class SAMDataset(Dataset):
+# NOTE: SAMDataset and break_long_read are now canonical in
+# trap.loaders.alignments and trap.utils.sequence respectively.
+# They are re-exported here for backward compatibility with existing callers.
 
-    def __init__(self, file_path):
-        self.file_path = file_path
-        self._ids, self.queries = self._load_alignments()
-        self._index = 0  # Initialize the index for iteration
 
-    def _load_alignments(self):
-        queries = {}
-        alignments = self.alignments()
-        for record in alignments:
-            queries[record.query_name] = record.query_sequence
-        return list(queries.keys()), queries
-    
-    def alignments(self):
-        if self.file_path.suffix == '.bam':
-            return pysam.AlignmentFile(self.file_path, "rb")
-        elif self.file_path.suffix == '.sam':
-            return pysam.AlignmentFile(self.file_path, "r")
-        elif self.file_path.suffix == '.cram':
-            return pysam.AlignmentFile(self.file_path, "rc")
-        else :
-            raise ValueError("Unsupported file type")
-    
-    def __len__(self):
-        return len(self._ids)
-    
-    def __iter__(self):
-        self._index = 0  # Reset the index for a new iteration
-        return self
-    
-    def __next__(self):
-        if self._index < len(self._ids):
-            key = self._ids[self._index]
-            self._index += 1
-            return key, self.queries[key]
-        else:
-            raise StopIteration
-    
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            return self._ids[index], [self.queries[key] for key in self._ids[index]]
-        elif isinstance(index, int):
-            if index < 0:
-                index += len(self._ids)
-            if index >= len(self._ids) or index < 0:
-                raise IndexError("The index is out of range.")
-            key = self._ids[index]
-            return key, self.queries[key]
-        else:
-            raise TypeError("Invalid argument type.")
+# ---------------------------------------------------------------------------
+# Stub train commands (implemented in train.py; kept here for CLI discoverability)
+# ---------------------------------------------------------------------------
 
-def break_long_read(long_read, read_length=150, mean_fragment_size=500, std_fragment_size=10, coverage=5):
-    if len(long_read) < mean_fragment_size + std_fragment_size:
-        return [{'forward': long_read[:read_length], 'reverse': long_read[read_length::-1]}]
-    # Calculate the number of fragments needed to achieve the desired coverage
-    num_fragments = int(len(long_read) * coverage / mean_fragment_size)
-    
-    # Generate fragment sizes based on the mean and standard deviation
-    fragment_sizes = np.random.normal(mean_fragment_size, std_fragment_size, num_fragments).astype(int)
-    
-    # Initialize an empty list to store the short reads
-    short_reads = []
-    
-    # Generate short reads from the long read
-    for fragment_size in fragment_sizes:
-        try:
-            forward_start = np.random.randint(0, len(long_read) - fragment_size + 1)
-        except ValueError:
-            forward_start = 0
-        forward_end = forward_start + read_length
-        forward = long_read[forward_start:forward_end]
-
-        insert_size = fragment_size - (read_length * 2)
-        reverse_start = forward_end + insert_size
-        reverse_end = reverse_start + read_length
-        if reverse_end > len(long_read):
-            # we use random insert when the modelled template length distribution
-            # is too large
-            reverse_end = np.random.randint(read_length, len(long_read))
-            reverse_start = reverse_end - read_length
-        reverse = long_read[reverse_start:reverse_end]
-        short_reads.append({'forward': forward, 'reverse': reverse})
-    
-    return short_reads
-
-class TokenizedTextClassificationPipeline(TextClassificationPipeline):
-    def preprocess(self, inputs, **tokenizer_kwargs) -> Dict[str, GenericTensor]:
-        return inputs
 
 @app.command()
 def masking(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
     model_name: str = typer.Argument(help="Name of the model will be saved"),
-    pretrained_tokenizer_path: Path = typer.Option(default=..., help="Path to the pretrained tokenizer"),
-    trainer_config_path: Path = typer.Option(CONFIG_DIR / "trainer_config_base_uncased.json", help="Path to the trainer config"),
-    albert_config_path: Path = typer.Option(CONFIG_DIR / "albert_config_base_uncased.json", help="Path to the Albert config"),
-    builder: str = typer.Option(None, help="Path to the genome dataset"),
-    k: int = typer.Option(18, help="K-mer size"),
-    test_split: float = typer.Option(0.1, help="Test split ratio"),
-    chunk_size: int = typer.Option(128, help="Chunk size for grouping texts"),
-    preprocessing_name: str = typer.Option("gencode.v47.transcripts.k18.skipn.nocompress", help="Path to save the processed dataset"),
-    num_workers: int = typer.Option(16, help="Number of workers"),
-    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
-    # -----------------------------------------
+    pretrained_tokenizer_path: Path = typer.Option(
+        default=..., help="Path to the pretrained tokenizer"
+    ),
+    trainer_config_path: Path = typer.Option(CONFIG_DIR / "trainer_config_base_uncased.json"),
+    albert_config_path: Path = typer.Option(CONFIG_DIR / "albert_config_base_uncased.json"),
+    builder: str = typer.Option(None),
+    k: int = typer.Option(17, help="K-mer size"),
+    test_split: float = typer.Option(0.1),
+    chunk_size: int = typer.Option(128),
+    preprocessing_name: str = typer.Option("gencode.v48.transcripts.k17.32k"),
+    num_workers: int = typer.Option(16),
+    debug: bool = typer.Option(False, "--debug", "-d"),
 ):
     pass
 
+
 @app.command()
 def classification(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
     model_name: str = typer.Argument(help="Name of the model will be saved"),
-    pretrained_tokenizer_path: Path = typer.Option(default=None, help="Path to the pretrained tokenizer"),
-    pretrained_model_path: Path = typer.Option(default=None, help="Path to the pretrained model"),
-    trainer_config_path: Path = typer.Option(CONFIG_DIR / "trainer_config_base_repeatmasker.json", help="Path to the trainer config"),
-    albert_config_path: Path = typer.Option(CONFIG_DIR / "albert_config_base_uncased.json", help="Path to the Albert config"),
-    builder: str = typer.Option(None, help="Path to the genome dataset"),
-    k: int = typer.Option(18, help="K-mer size"),
-    test_split: float = typer.Option(0.1, help="Test split ratio"),
-    chunk_size: int = typer.Option(128, help="Chunk size for grouping texts"),
-    preprocessing_name: str = typer.Option("gencode.v47.transcripts.k18.skipn.nocompress", help="Path to save the processed dataset"),
-    num_workers: int = typer.Option(16, help="Number of workers"),
-    do_eval: bool = typer.Option(False, help="Enable evaluation mode"),
-    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
-    # -----------------------------------------
+    pretrained_tokenizer_path: Path = typer.Option(default=None),
+    pretrained_model_path: Path = typer.Option(default=None),
+    trainer_config_path: Path = typer.Option(CONFIG_DIR / "trainer_config_base_repeatmasker.json"),
+    albert_config_path: Path = typer.Option(CONFIG_DIR / "albert_config_base_uncased.json"),
+    builder: str = typer.Option(None),
+    k: int = typer.Option(17, help="K-mer size"),
+    test_split: float = typer.Option(0.1),
+    chunk_size: int = typer.Option(128),
+    preprocessing_name: str = typer.Option("gencode.v48.transcripts.k17.32k"),
+    num_workers: int = typer.Option(16),
+    do_eval: bool = typer.Option(False),
+    debug: bool = typer.Option(False, "--debug", "-d"),
 ):
+    import json
+
     import evaluate
-    from transformers import Trainer, AlbertForSequenceClassification, TrainingArguments
+    from transformers import AlbertForSequenceClassification, Trainer, TrainingArguments
 
     debug_callback(debug)
     if not trainer_config_path.exists():
-        # Try in the CONFIG_DIR
         if (CONFIG_DIR / trainer_config_path).exists():
             trainer_config_path = CONFIG_DIR / trainer_config_path
         else:
-            logger.error("Path to the trainer config not exist.")
-    
-    # TODO: arg.load_from_cache:
+            logger.error("Trainer config not found.")
+
     logger.info("Loading pretokenized dataset")
-    lm_datasets = load_from_disk(os.path.join(PROCESSED_DATA_DIR, preprocessing_name, 'classification'))
+    lm_datasets = load_from_disk(
+        os.path.join(PROCESSED_DATA_DIR, preprocessing_name, "classification")
+    )
     if debug_mode:
-        logger.debug("Downsampling pretokenized dataset")
         train_size = 1_000
-        test_size = int(0.1 * train_size)
         lm_datasets = lm_datasets["train"].train_test_split(
-            train_size=train_size, test_size=test_size, seed=42)
-        logger.debug("Downsampling pretokenized eval dataset")
-        eval_size = int(0.1 * train_size)
-        train_eval_split = lm_datasets['train'].train_test_split(
-            test_size=eval_size, seed=42)
-        lm_datasets['eval'] = train_eval_split['test']
-        pass
-        
-    logger.info("Set training model...")
-
-    logger.info("Set model from pretrained ...")
-    model = AlbertForSequenceClassification.from_pretrained(os.path.join(MODELS_DIR, pretrained_model_path, 'final'))
-    model_num_parameters = model.num_parameters() / 1_000_000
-    logger.info(f"'Custom Genomics AlBERT number of parameters: {round(model_num_parameters)}M'")
-    logger.info("Original ALBERT number of parameters: 11M")
-    logger.info("Original BERT number of parameters: 110M")
-
-    logger.info("Loading pretrained tokenizer")
-    logger.info("Set tokenizer from pretrained ...")
-    tokenizer = PreTrainedTokenizerFast.from_pretrained(pretrained_model_name_or_path = os.path.join(MODELS_DIR, pretrained_model_path, 'final'),
-                                                        local_files_only=True)
-
-    tokenizer.post_processor = processors.TemplateProcessing(
-            single="[CLS]:0 $A:0 [SEP]:0",
-            pair="[CLS]:0 $A:0 [SEP]:0 $B:1 [SEP]:1",
-            special_tokens=[
-                ("[CLS]", tokenizer.convert_tokens_to_ids("[CLS]")),
-                ("[SEP]", tokenizer.convert_tokens_to_ids("[SEP]")),
-            ],
+            train_size=train_size, test_size=int(0.1 * train_size), seed=42
         )
-    tokenizer.model_max_length = model.config.max_position_embeddings
+        lm_datasets["eval"] = lm_datasets["train"].train_test_split(
+            test_size=int(0.1 * train_size), seed=42
+        )["test"]
 
-    data_collator = DataCollatorWithPadding(tokenizer)
+    model = AlbertForSequenceClassification.from_pretrained(
+        os.path.join(MODELS_DIR, pretrained_model_path, "final")
+    )
+    logger.info(f"Model parameters: {model.num_parameters() / 1e6:.0f}M")
 
-    trainer_args = TrainingArguments(**json.load(open(trainer_config_path, 'r')))
+    tokenizer = load_kmer_tokenizer(
+        os.path.join(MODELS_DIR, pretrained_model_path, "final"),
+        model.config.max_position_embeddings,
+    )
+
+    data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=64)
+    trainer_args = TrainingArguments(**_resolve_precision(json.load(open(trainer_config_path))))
     trainer_args.output_dir = os.path.join(MODELS_DIR, model_name)
     trainer_args.dataloader_num_workers = num_workers
-    
-    logger.info("Preparing your data for training")
- 
-    device = torch.device(device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu')
-    logger.info(f"'Training in device {device.type}'")
-    
-    # Load individual metrics
+
     accuracy = evaluate.load("accuracy")
     f1 = evaluate.load("f1")
     precision = evaluate.load("precision")
     recall = evaluate.load("recall")
-    
-    logger.info("Using accuracy, f1, precision, and recall as classification scores")
-    
+
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
         predictions = np.argmax(predictions, axis=1)
-        # Compute individual metrics
-        accuracy_result = accuracy.compute(predictions=predictions, references=labels)
-        f1_result = f1.compute(predictions=predictions, references=labels, average="micro")
-        precision_result = precision.compute(predictions=predictions, references=labels, average="micro")
-        recall_result = recall.compute(predictions=predictions, references=labels, average="micro")
-        
-        # Combine metrics into a single dictionary
-        combined_metrics = {
-            "accuracy": accuracy_result["accuracy"],
-            "f1": f1_result["f1"],
-            "precision": precision_result["precision"],
-            "recall": recall_result["recall"]
+        return {
+            "accuracy": accuracy.compute(predictions=predictions, references=labels)["accuracy"],
+            "f1": f1.compute(predictions=predictions, references=labels, average="micro")["f1"],
+            "precision": precision.compute(
+                predictions=predictions, references=labels, average="micro"
+            )["precision"],
+            "recall": recall.compute(predictions=predictions, references=labels, average="micro")[
+                "recall"
+            ],
         }
-        
-        return combined_metrics
 
     try_mkdir(trainer_args.output_dir)
     trainer = Trainer(
@@ -281,373 +200,581 @@ def classification(
         data_collator=data_collator,
         compute_metrics=compute_metrics,
     )
-    # Evaluation
     if do_eval:
-        logger.info("*** Evaluate ***")
         metrics = trainer.evaluate(eval_dataset=lm_datasets["eval"])
         metrics["eval_samples"] = len(lm_datasets["eval"])
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
-    # -----------------------------------------
-    pass
+
+
+# ---------------------------------------------------------------------------
+# processing_dataset  (QW-1 / QW-4 / QW-6 / QW-10)
+# ---------------------------------------------------------------------------
+
 
 @app.command()
 def processing_dataset(
-    input_file: Path = typer.Option(None, help="Path to the reads dataset"),
-    pair_file: Path = typer.Option(None, help="Path to the reads dataset"),
-    output_path: Path = typer.Option(None, help="Path to the output dataset"),
-    k: int = typer.Option(18, help="K-mer size"),
-    save_processing: bool = typer.Option(False, help="Padding when tokenize"),
-    pretrained_tokenizer_name: Path = typer.Option(None, help="Tokenize the reads dataset"),
-    padding: bool = typer.Option(True, help="Padding when tokenize"),
-    is_long: bool = typer.Option(False, "--is-long", "-l", help="Declarate if the reads dataset is a long-read sequencing"),
-    num_workers: int = typer.Option(16, help="Number of workers")
+    input_file: Path = typer.Option(None, help="Path to R1 / single FASTQ or BAM/SAM"),
+    pair_file: Path = typer.Option(None, help="Path to R2 FASTQ (paired-end)"),
+    output_path: Path = typer.Option(None, help="Base output directory"),
+    k: int = typer.Option(17, help="K-mer size"),
+    save_processing: bool = typer.Option(False, help="Save intermediate (pre-tokenised) dataset"),
+    pretrained_tokenizer_name: Path = typer.Option(
+        None, help="Model directory containing tokenizer"
+    ),
+    padding: bool = typer.Option(
+        False, help="Pad sequences to max_length (default: dynamic padding)"
+    ),
+    is_long: bool = typer.Option(False, "--is-long", "-l", help="Input is long-read sequencing"),
+    num_workers: int = typer.Option(16, help="Parallel workers for Dataset.map"),
+    seed: int = typer.Option(3469, help="Random seed for long-read fragmentation"),
+    verbosity: str = typer.Option(
+        "off",
+        "--verbosity",
+        help="Log verbosity: off (default), normal, detailed.",
+        envvar="TRAP_VERBOSITY",
+    ),
 ):
-    break_fn = break_long_read if is_long else lambda x: [x]
-    standardization = GenomeDataset._standardization
-    if ''.join(input_file.suffixes) in ['.fq.gz', '.fastq.gz', '.fq.bgz', '.fastq.bgz', '.fq', '.fastq']:
+    """Tokenise a FASTQ/BAM into a HuggingFace Dataset saved to disk.
+
+    Phase-1 changes
+    ---------------
+    * Generator now yields raw sequences ``{r1_seq, r2_seq, id}`` instead of
+      pre-split k-mer strings.  kmer_split runs *inside* the tokenise map so
+      it benefits from ``num_proc`` parallelism (QW-1).
+    * ``id`` column is kept in the tokenised dataset (was removed before,
+      forcing postprocessing to re-join by position).
+    * ``batched=True`` in Dataset.map — activates the HF Rust tokeniser's
+      batch path (QW-1).
+    * ``padding=False`` by default; DataCollatorWithPadding handles padding
+      at inference time (QW-6).
+    """
+    import time as _time
+
+    set_verbosity(verbosity)
+    _t0 = _time.perf_counter()
+    logger.log(
+        "STAGE",
+        f"[predict:processing_dataset] input={input_file} k={k} out={output_path}",
+    )
+
+    # Use canonical standardize (strips N; k=17/v48 decision 2026-05-28).
+    standardization = _standardize_sequence
+    fragmentation_rng = np.random.default_rng(seed) if is_long else None
+    break_fn = (lambda seq: break_long_read(seq, rng=fragmentation_rng)) if is_long else None
+
+    # --- build generator ---
+    suffix = "".join(input_file.suffixes)
+    if suffix in (".fq.gz", ".fastq.gz", ".fq.bgz", ".fastq.bgz", ".fq", ".fastq"):
         if pair_file is not None:
+            # Paired-end FASTQ (hot path) — raw sequences, no k-mer split yet
             def generator_from_iterator():
-                with genome_file_handle(input_file) as r1_handle, genome_file_handle(pair_file) as r2_handle:
-                    for r1, r2 in zip(SeqIO.parse(r1_handle, "fastq"), SeqIO.parse(r2_handle, "fastq")):
-                        yield {'pair': {'text': kmer_split(k, standardization(str(r1.seq))), 'text_pair': kmer_split(k, standardization(str(r2.seq)))},
-                           'id': str(r1.id)}
+                with genome_file_handle(input_file) as h1, genome_file_handle(pair_file) as h2:
+                    for r1, r2 in zip(SeqIO.parse(h1, "fastq"), SeqIO.parse(h2, "fastq")):
+                        yield {
+                            "r1_seq": standardization(str(r1.seq)),
+                            "r2_seq": standardization(str(r2.seq)),
+                            "id": str(r1.id),
+                        }
+
         else:
-            # TODO: pass to just genome_file_handle
-            raw_reads = GenomeDataset(input_file, "fastq")
+            # Single FASTQ — synthesize the paired-end input as
+            # (read, reverse_complement(read)) to match the classifier's training
+            # format. The revcomp is computed per read on demand (GenomeDataset no
+            # longer precomputes a second strand for every record).
+            # lazy=True streams reads from disk instead of pre-loading every
+            # sequence string into RAM. A release-size single-end FASTQ has 14M+
+            # reads; eager loading would hold ~10 GB of Python strings in the
+            # parent RSS, which Dataset.from_generator's fork then multiplies in
+            # the SLURM cgroup (same CoW-OOM resolved for stage-20 preprocessing).
+            raw_reads = GenomeDataset(input_file, "fastq", lazy=True)
+
             def generator_from_iterator():
-                for seq, rev, id in raw_reads:
-                    for pair in break_fn(seq):
-                        yield {'pair': {'text': kmer_split(k, pair['forward']), 'text_pair': kmer_split(k, pair['reverse'])},
-                               'id': id}
+                for seq, read_id in raw_reads:
+                    if break_fn is not None:
+                        for pair in break_fn(seq):
+                            yield {
+                                "r1_seq": standardization(pair["forward"]),
+                                "r2_seq": standardization(pair["reverse"]),
+                                "id": read_id,
+                            }
+                    else:
+                        std_seq = standardization(seq)
+                        yield {
+                            "r1_seq": std_seq,
+                            "r2_seq": reverse_complement(std_seq),
+                            "id": read_id,
+                        }
 
-    elif ''.join(input_file.suffixes) in ['.sam', '.bam', '.cram']:
-        # TODO: pass to just sam_file_handle
+    elif suffix in (".sam", ".bam", ".cram"):
         raw_alignments = SAMDataset(input_file)
-        break_fn = break_long_read if is_long else lambda x: x
+
         def generator_from_iterator():
-            for key, seq in raw_alignments.queries.items():
-                for pair in break_fn(seq):
-                    yield {'pair': {'text': kmer_split(k, pair['forward']), 'text_pair': kmer_split(k, pair['reverse'])},
-                           'id': key}
+            for read_id, seq in raw_alignments:
+                if break_fn is not None:
+                    for pair in break_fn(seq):
+                        yield {
+                            "r1_seq": standardization(pair["forward"]),
+                            "r2_seq": standardization(pair["reverse"]),
+                            "id": read_id,
+                        }
+                else:
+                    yield {"r1_seq": standardization(seq), "r2_seq": "", "id": read_id}
+
     else:
-        raise ValueError("Unsupported file type")
+        raise ValueError(f"Unsupported file format: {suffix}")
 
-    logger.info("Create datasets from generator")
-    raw_dataset = Dataset.from_generator(generator_from_iterator, num_proc=num_workers)
-    logger.info(f"Datasets create size {len(raw_dataset)}")
-    try_mkdir(os.path.join(output_path, 'short_reads'))
+    logger.info("Building dataset from generator")
+    raw_dataset = Dataset.from_generator(generator_from_iterator)
+    logger.log("STAGE", f"[predict:processing_dataset] loaded {len(raw_dataset):,} records")
+    logger.info(f"Generator produced {len(raw_dataset)} records")
+    try_mkdir(os.path.join(output_path, "short_reads"))
+
     if save_processing or pretrained_tokenizer_name is None:
-        raw_dataset.save_to_disk(os.path.join(output_path, 'short_reads'), num_proc=num_workers)
-        logger.info(f"Preprocessing datasets saved in {os.path.join(output_path, 'short_reads')}")
-        pass
-    if pretrained_tokenizer_name is not None:
-        logger.info("Loading pretrained tokenizer")
-        logger.info("Set tokenizer from pretrained ...")
-        tokenizer = PreTrainedTokenizerFast.from_pretrained(pretrained_model_name_or_path = os.path.join(MODELS_DIR, pretrained_tokenizer_name, 'final'),
-                                                            local_files_only=True)
+        raw_dataset.save_to_disk(os.path.join(output_path, "short_reads"), num_proc=num_workers)
+        logger.info(f"Saved raw dataset to {output_path}/short_reads")
 
-        tokenizer.post_processor = processors.TemplateProcessing(
-                single="[CLS]:0 $A:0 [SEP]:0",
-                pair="[CLS]:0 $A:0 [SEP]:0 $B:1 [SEP]:1",
-                special_tokens=[
-                    ("[CLS]", tokenizer.convert_tokens_to_ids("[CLS]")),
-                    ("[SEP]", tokenizer.convert_tokens_to_ids("[SEP]")),
-                ],
+    if pretrained_tokenizer_name is not None:
+        logger.info("Loading tokenizer")
+        tokenizer = load_kmer_tokenizer(
+            os.path.join(MODELS_DIR, pretrained_tokenizer_name, "final")
+        )
+
+        _k = k  # capture for closure
+
+        _is_salmon = isinstance(tokenizer, SalmonKmerTokenizer)
+
+        def tokenize(examples):
+            """kmer_split + tokenise in one batched map step (QW-1, QW-3)."""
+            pad = "max_length" if padding else False
+            if _is_salmon:
+                r2 = examples["r2_seq"] if any(examples["r2_seq"]) else None
+                return tokenizer.batch_encode_sequences(
+                    examples["r1_seq"],
+                    r2,
+                    max_length=tokenizer.model_max_length,
+                    padding=pad,
+                    truncation=True,
+                )
+            r1_kmers = [kmer_split(_k, s) for s in examples["r1_seq"]]
+            r2_kmers = [kmer_split(_k, s) for s in examples["r2_seq"]]
+            return tokenizer(
+                r1_kmers,
+                r2_kmers if any(r2_kmers) else None,
+                padding=pad,
+                truncation=True,
+                verbose=False,
             )
 
-
-        def tokenize_function(examples):
-            result = tokenizer(examples["pair"]["text"], examples["pair"]["text_pair"], padding=padding, truncation=True, verbose=False)
-            return result
-        
-        tokenized_datasets = raw_dataset.map(
-            tokenize_function, batched=False, remove_columns=['pair', 'id'], load_from_cache_file=False, num_proc=num_workers,
-            desc="Running tokenizer on dataset"
+        logger.info("Tokenising dataset (batched=True)")
+        tokenized = raw_dataset.map(
+            tokenize,
+            batched=True,
+            batch_size=256,
+            remove_columns=["r1_seq", "r2_seq"],  # keep 'id'
+            num_proc=num_workers,
+            load_from_cache_file=False,
+            desc="Tokenising",
         )
-        logger.info("Datasets tokenized")
-        try_mkdir(os.path.join(output_path, 'short_reads', 'tokenized'))
-        tokenized_datasets.save_to_disk(os.path.join(output_path, 'short_reads', 'tokenized'))
-        logger.info(f"Tokenized datasets saved in {os.path.join(output_path, 'short_reads', 'tokenized')}")
-    pass
+        logger.info(f"Tokenised {len(tokenized)} records")
+        try_mkdir(os.path.join(output_path, "short_reads", "tokenized"))
+        tokenized.save_to_disk(os.path.join(output_path, "short_reads", "tokenized"))
+        _elapsed = _time.perf_counter() - _t0
+        logger.log(
+            "STAGE",
+            f"[predict:processing_dataset] done — {len(tokenized):,} records "
+            f"elapsed={_elapsed:.1f} s → {output_path}/short_reads/tokenized/",
+        )
+        logger.info(f"Saved tokenised dataset to {output_path}/short_reads/tokenized")
+
+
+# ---------------------------------------------------------------------------
+# quantify  (QW-5 / QW-6 / QW-8 / QW-9 / QW-10)
+# ---------------------------------------------------------------------------
+
 
 @app.command()
 def quantify(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    pretrained_model_name: Path = typer.Option(default=None, help="Path to the pretrained model"),
-    output_path: Path = typer.Option(None, help="Path to the output dataset"),
-    batch_size: int = typer.Option(16, help="Chunk size for grouping texts"),
-    num_shards: int = typer.Option(None, help="Chunk size for grouping texts"),
-    shards_index: int = typer.Option(0, help="Chunk size for grouping texts"),
-    is_tokenized: bool = typer.Option(False, help="Enable debug mode"),
-    bitsandbytes: str = typer.Option(None, help="Enable debug mode"),
-    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
-    # -----------------------------------------
+    pretrained_model_name: Path = typer.Option(
+        default=None, help="Model directory under MODELS_DIR"
+    ),
+    output_path: Path = typer.Option(None, help="Directory containing the tokenised dataset"),
+    batch_size: int = typer.Option(64, help="Per-device inference batch size"),
+    num_shards: int = typer.Option(None),
+    shards_index: int = typer.Option(0),
+    is_tokenized: bool = typer.Option(False),
+    num_workers: int = typer.Option(4, help="DataLoader worker processes"),
+    seed: int = typer.Option(3469),
+    debug: bool = typer.Option(False, "--debug", "-d"),
+    verbosity: str = typer.Option(
+        "off",
+        "--verbosity",
+        help="Log verbosity: off (default), normal, detailed.",
+        envvar="TRAP_VERBOSITY",
+    ),
 ):
-    # Imports
+    """Classify tokenised reads and write per-rank Parquet score files.
+
+    Phase-1 changes
+    ---------------
+    * DataLoader with ``pin_memory`` and ``prefetch_factor`` replaces
+      ``pipeline(iter(batch_size=1))`` (QW-5).
+    * ``torch.inference_mode`` + ``torch.autocast`` (QW-5).
+    * ``torch.compile(mode="reduce-overhead")`` on CUDA only (QW-9).
+    * Parquet output per rank; no in-process accumulation (QW-8).
+    * TemplateProcessing not re-applied (baked into tokenizer; QW-10).
+    """
+    import time as _time
+
+    import pyarrow.parquet as pq
     from transformers import AlbertForSequenceClassification
-    from transformers.pipelines.pt_utils import KeyDataset
 
+    set_verbosity(verbosity)
+    _t0 = _time.perf_counter()
+    logger.log(
+        "STAGE",
+        f"[predict:quantify] model={pretrained_model_name} out={output_path}",
+    )
     debug_callback(debug)
-    quantization_config = None
-    if bitsandbytes is not None:
-        quantization_config = BitsAndBytesConfig(load_in_4bit=True) if (bitsandbytes == '4bit') else BitsAndBytesConfig(load_in_8bit=True)
-        
-    logger.info("Set model from pretrained ...")
-    model = AlbertForSequenceClassification.from_pretrained(os.path.join(MODELS_DIR, pretrained_model_name, 'final'), 
-                                                                attn_implementation="sdpa")
-    model_num_parameters = model.num_parameters() / 1_000_000
-    logger.info(f"'Custom Genomics AlBERT number of parameters: {round(model_num_parameters)}M'")
-    logger.info("Original ALBERT number of parameters: 11M")
-    logger.info("Original BERT number of parameters: 110M")
+    set_global_seed(seed)
 
-    logger.info("Loading pretrained tokenizer")
-    logger.info("Set tokenizer from pretrained ...")
-    tokenizer = PreTrainedTokenizerFast.from_pretrained(pretrained_model_name_or_path = os.path.join(MODELS_DIR, pretrained_model_name, 'final'),
-                                                        local_files_only=True)
+    logger.info("Loading model")
+    model = AlbertForSequenceClassification.from_pretrained(
+        os.path.join(MODELS_DIR, pretrained_model_name, "final"),
+        attn_implementation="sdpa",
+    )
+    logger.log("STAGE", f"[predict:quantify] model parameters: {model.num_parameters() / 1e6:.0f}M")
+    logger.info(f"Model parameters: {model.num_parameters() / 1e6:.0f}M")
 
-    tokenizer.post_processor = processors.TemplateProcessing(
-            single="[CLS]:0 $A:0 [SEP]:0",
-            pair="[CLS]:0 $A:0 [SEP]:0 $B:1 [SEP]:1",
-            special_tokens=[
-                ("[CLS]", tokenizer.convert_tokens_to_ids("[CLS]")),
-                ("[SEP]", tokenizer.convert_tokens_to_ids("[SEP]")),
-            ],
-        )
-    tokenizer.model_max_length = model.config.max_position_embeddings
-        
-    # TODO: arg.load_from_cache:
-    logger.info("Loading and processing dataset")
+    logger.info("Loading tokenizer")
+    tokenizer = load_kmer_tokenizer(
+        os.path.join(MODELS_DIR, pretrained_model_name, "final"),
+        model.config.max_position_embeddings,
+    )
+
+    logger.info("Loading dataset")
     if is_tokenized:
-        logger.info("Loading tokenized dataset")
-        processed_dataset = load_from_disk(os.path.join(output_path, 'short_reads', 'tokenized'))
+        dataset = load_from_disk(os.path.join(output_path, "short_reads", "tokenized"))
         if num_shards is not None:
-            logger.info(f"Shard dataset: shard index {shards_index}/{num_shards}")
-            processed_dataset = processed_dataset.shard(num_shards=num_shards, index=shards_index)
-        processed_dataset.set_format(type='torch')
+            dataset = dataset.shard(num_shards=num_shards, index=shards_index)
     else:
-        logger.info("Preprocessed tokenized dataset")
-        processed_dataset = load_from_disk(os.path.join(output_path, 'short_reads'))
+        dataset = load_from_disk(os.path.join(output_path, "short_reads"))
+
     if debug_mode:
-        logger.debug("Downsampling pretokenized dataset")
-        dataset_size = 1_000
-        processed_dataset = processed_dataset.select(np.random.randint(len(processed_dataset), size=dataset_size))
-    pass
+        dataset = dataset.select(range(min(1_000, len(dataset))))
 
     distributed_state = PartialState()
-    # Create a classification pipeline
-    classifier = pipeline(task="text-classification", model=model, tokenizer=tokenizer, 
-                          top_k=None, torch_dtype=torch.bfloat16, 
-                          device = distributed_state.device, pipeline_class=TokenizedTextClassificationPipeline,
-                          model_kwargs={"quantization_config": quantization_config})
-    logger.info("Compile the model ...")
-    classifier.model = torch.compile(classifier.model, backend="inductor", mode="max-autotune", fullgraph=True)
-    torch.cuda.empty_cache()
+    device = distributed_state.device.type  # 'cuda', 'mps', or 'cpu'
 
-    if distributed_state.is_main_process:
-        if not os.path.exists(output_path):
-            try_mkdir(output_path)
-            logger.info(f"Directory '{output_path}' created successfully.")
-        else:
-            logger.info(f"Directory '{output_path}' already exists.")
-    
-    distributed_state.wait_for_everyone()
-    with distributed_state.split_between_processes(processed_dataset) as datasets:
-        results_bar = tqdm(classifier(datasets.iter(batch_size=1), batch_size=batch_size, truncation=True, padding=True), desc=f"classifying {distributed_state.device}", total=len(datasets))
-        class_scores = []
-        for step, results in enumerate(results_bar):
-            class_scores.append(results)
+    model = model.to(distributed_state.device)
+    model.eval()
 
-    distributed_state.wait_for_everyone()
-    class_scores = gather_object(class_scores)
-
-    if distributed_state.is_main_process:
-        with open(os.path.join(output_path, f'class_scores_{shards_index}.pkl'), 'wb') as f:
-            pickle.dump(class_scores, f)
-        logger.info(f"Quantification finished. Saved in '{output_path}'")
-
-    pass
-
-@app.command()
-def cpu_quantify(
-    pretrained_model_name: Path = typer.Option(default=None, help="Path to the pretrained model"),
-    output_path: Path = typer.Option(None, help="Path to the output dataset"),
-    batch_size: int = typer.Option(16, help="Chunk size for grouping texts"),
-    num_shards: int = typer.Option(None, help="Number of shards"),
-    shards_index: int = typer.Option(0, help="Shard index"),
-    is_tokenized: bool = typer.Option(False, help="Use tokenized dataset"),
-    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
-):
-    from transformers import AlbertForSequenceClassification
-    debug_callback(debug)
-
-    logger.info("Loading ONNX model ...")
-    model = AlbertForSequenceClassification.from_pretrained(os.path.join(MODELS_DIR, pretrained_model_name, 'final'), 
-                                                                attn_implementation="sdpa")
-    model_num_parameters = model.num_parameters() / 1_000_000
-    logger.info(f"'Custom Genomics AlBERT number of parameters: {round(model_num_parameters)}M'")
-    logger.info("Original ALBERT number of parameters: 11M")
-    logger.info("Original BERT number of parameters: 110M")
-
-    logger.info("Loading tokenizer ...")
-    tokenizer = PreTrainedTokenizerFast.from_pretrained(
-        os.path.join(MODELS_DIR, pretrained_model_name, 'final'),
-        local_files_only=True
-    )
-
-    tokenizer.model_max_length = model.config.max_position_embeddings
-
-    logger.info("Loading dataset ...")
-    if is_tokenized:
-        processed_dataset = load_from_disk(os.path.join(output_path, 'short_reads', 'tokenized'))
-        if num_shards is not None:
-            processed_dataset = processed_dataset.shard(num_shards=num_shards, index=shards_index)
-        processed_dataset.set_format(type='torch')
-    else:
-        processed_dataset = load_from_disk(os.path.join(output_path, 'short_reads'))
-
-    if debug:
-        logger.debug("Downsampling dataset for debug mode")
-        processed_dataset = processed_dataset.select(np.random.randint(len(processed_dataset), size=1000))
-
-    distributed_state = PartialState(cpu=True)
-
-    logger.info("Creating ONNX pipeline ...")
-    classifier = pipeline(
-        task="text-classification",
-        model=model,
-        tokenizer=tokenizer,
-        pipeline_class=TokenizedTextClassificationPipeline,
-        top_k=None, 
-        torch_dtype=torch.bfloat16,
-        device=-1,  # CPU
-    )
+    # Compile on CUDA only; inductor is not available on MPS/CPU (QW-9).
+    if device == "cuda":
+        logger.info("Compiling model (reduce-overhead)")
+        model = torch.compile(model, mode="reduce-overhead")
 
     if distributed_state.is_main_process:
         try_mkdir(output_path)
 
     distributed_state.wait_for_everyone()
-    with distributed_state.split_between_processes(processed_dataset) as datasets:
-        results_bar = tqdm(
-            classifier(datasets.iter(batch_size=1), batch_size=batch_size, truncation=True, padding=True),
-            desc=f"classifying on CPU", total=len(datasets))
-        class_scores = [results for results in results_bar]
 
-    distributed_state.wait_for_everyone()
-    class_scores = gather_object(class_scores)
+    labels = [model.config.id2label[i] for i in range(model.config.num_labels)]
+    schema = build_score_schema(labels)
 
-    if distributed_state.is_main_process:
-        with open(os.path.join(output_path, f'class_scores_{shards_index}.pkl'), 'wb') as f:
-            pickle.dump(class_scores, f)
-        logger.info(f"Quantification finished. Saved in '{output_path}'")
+    collator = DataCollatorWithPadding(
+        tokenizer, padding="longest", pad_to_multiple_of=64, return_tensors="pt"
+    )
+
+    with distributed_state.split_between_processes(dataset) as shard:
+        # Snapshot IDs before setting torch format (string columns drop out).
+        shard_ids = (
+            list(shard["id"])
+            if "id" in shard.column_names
+            else [str(i) for i in range(len(shard))]
+        )
+        tensor_cols = [c for c in shard.column_names if c != "id"]
+        shard.set_format("torch", columns=tensor_cols)
+
+        use_pin = device == "cuda"
+        use_workers = num_workers if device != "mps" else 0  # fork safety on Mac
+        loader = DataLoader(
+            shard,
+            batch_size=batch_size,
+            collate_fn=collator,
+            pin_memory=use_pin,
+            num_workers=use_workers,
+            persistent_workers=(use_workers > 0),
+            prefetch_factor=4 if use_workers > 0 else None,
+        )
+
+        parquet_path = (
+            Path(output_path) / f"scores_{distributed_state.process_index}_{shards_index}.parquet"
+        )
+
+        with pq.ParquetWriter(str(parquet_path), schema) as writer:
+            id_cursor = 0
+            with torch.inference_mode(), _autocast_ctx(device):
+                for batch in tqdm(
+                    loader, desc=f"[rank {distributed_state.process_index}] classifying"
+                ):
+                    batch = {k: v.to(distributed_state.device) for k, v in batch.items()}
+                    logits = model(**batch).logits
+                    probs = torch.softmax(logits, dim=-1).float().cpu().numpy()
+                    n = len(probs)
+                    batch_ids = shard_ids[id_cursor : id_cursor + n]
+                    id_cursor += n
+                    writer.write_table(scores_table(batch_ids, probs, labels))
+
+    _elapsed = _time.perf_counter() - _t0
+    logger.log(
+        "STAGE",
+        f"[predict:quantify] done — rank={distributed_state.process_index} "
+        f"elapsed={_elapsed:.0f} s → {parquet_path}",
+    )
+    logger.info(f"Scores written to {parquet_path}")
+
+
+# ---------------------------------------------------------------------------
+# cpu_quantify — same as quantify but forces CPU
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def cpu_quantify(
+    pretrained_model_name: Path = typer.Option(default=None),
+    output_path: Path = typer.Option(None),
+    batch_size: int = typer.Option(64),
+    num_shards: int = typer.Option(None),
+    shards_index: int = typer.Option(0),
+    is_tokenized: bool = typer.Option(False),
+    num_workers: int = typer.Option(0),
+    seed: int = typer.Option(3469),
+    debug: bool = typer.Option(False, "--debug", "-d"),
+    verbosity: str = typer.Option(
+        "off",
+        "--verbosity",
+        help="Log verbosity: off (default), normal, detailed.",
+        envvar="TRAP_VERBOSITY",
+    ),
+):
+    """CPU-only quantification (no Accelerate distributed state)."""
+    import time as _time
+
+    import pyarrow.parquet as pq
+    from transformers import AlbertForSequenceClassification
+
+    set_verbosity(verbosity)
+    _t0 = _time.perf_counter()
+    logger.log("STAGE", f"[predict:cpu_quantify] model={pretrained_model_name} out={output_path}")
+    debug_callback(debug)
+    set_global_seed(seed)
+
+    model = AlbertForSequenceClassification.from_pretrained(
+        os.path.join(MODELS_DIR, pretrained_model_name, "final"), attn_implementation="sdpa"
+    )
+    model.eval()
+    logger.info(f"Model parameters: {model.num_parameters() / 1e6:.0f}M")
+
+    tokenizer = load_kmer_tokenizer(
+        os.path.join(MODELS_DIR, pretrained_model_name, "final"),
+        model.config.max_position_embeddings,
+    )
+
+    if is_tokenized:
+        dataset = load_from_disk(os.path.join(output_path, "short_reads", "tokenized"))
+        if num_shards is not None:
+            dataset = dataset.shard(num_shards=num_shards, index=shards_index)
+    else:
+        dataset = load_from_disk(os.path.join(output_path, "short_reads"))
+
+    if debug:
+        dataset = dataset.select(range(min(1_000, len(dataset))))
+
+    labels = [model.config.id2label[i] for i in range(model.config.num_labels)]
+    schema = build_score_schema(labels)
+    collator = DataCollatorWithPadding(
+        tokenizer, padding="longest", pad_to_multiple_of=64, return_tensors="pt"
+    )
+
+    shard_ids = (
+        list(dataset["id"])
+        if "id" in dataset.column_names
+        else [str(i) for i in range(len(dataset))]
+    )
+    tensor_cols = [c for c in dataset.column_names if c != "id"]
+    dataset.set_format("torch", columns=tensor_cols)
+
+    loader = DataLoader(
+        dataset, batch_size=batch_size, collate_fn=collator, num_workers=num_workers
+    )
+    parquet_path = Path(output_path) / f"scores_cpu_{shards_index}.parquet"
+    try_mkdir(output_path)
+
+    with pq.ParquetWriter(str(parquet_path), schema) as writer:
+        id_cursor = 0
+        with torch.inference_mode():
+            for batch in tqdm(loader, desc="classifying (CPU)"):
+                logits = model(**batch).logits
+                probs = torch.softmax(logits, dim=-1).float().cpu().numpy()
+                n = len(probs)
+                writer.write_table(
+                    scores_table(shard_ids[id_cursor : id_cursor + n], probs, labels)
+                )
+                id_cursor += n
+
+    _elapsed_cpu = _time.perf_counter() - _t0
+    logger.log(
+        "STAGE",
+        f"[predict:cpu_quantify] done — elapsed={_elapsed_cpu:.0f} s → {parquet_path}",
+    )
+    logger.info(f"Scores written to {parquet_path}")
+
+
+# ---------------------------------------------------------------------------
+# accelerate_quantify  (QW-9 / QW-10)
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def accelerate_quantify(
+    pretrained_model_name: Path = typer.Option(default=None),
+    output_path: Path = typer.Option(None),
+    batch_size: int = typer.Option(64),
+    num_workers: int = typer.Option(4),
+    seed: int = typer.Option(3469),
+    debug: bool = typer.Option(False, "--debug", "-d"),
+    verbosity: str = typer.Option(
+        "off",
+        "--verbosity",
+        help="Log verbosity: off (default), normal, detailed.",
+        envvar="TRAP_VERBOSITY",
+    ),
+):
+    """Multi-GPU inference via Accelerate prepare + DataLoader."""
+    import time as _time
+
+    import pyarrow.parquet as pq
+    from transformers import AlbertForSequenceClassification
+
+    set_verbosity(verbosity)
+    _t0 = _time.perf_counter()
+    accelerator = Accelerator()
+    logger.log(
+        "STAGE",
+        f"[predict:accelerate_quantify] model={pretrained_model_name} "
+        f"num_processes={accelerator.num_processes}",
+    )
+    set_global_seed(seed)
+
+    with accelerator.main_process_first():
+        debug_callback(debug)
+        model = AlbertForSequenceClassification.from_pretrained(
+            os.path.join(MODELS_DIR, pretrained_model_name, "final"), attn_implementation="sdpa"
+        )
+        logger.info(f"Model parameters: {model.num_parameters() / 1e6:.0f}M")
+
+        # Compile on CUDA only (QW-9)
+        if accelerator.device.type == "cuda":
+            model = torch.compile(model, mode="reduce-overhead")
+
+        tokenizer = load_kmer_tokenizer(
+            os.path.join(MODELS_DIR, pretrained_model_name, "final"),
+            model.config.max_position_embeddings,
+        )
+
+        dataset = load_from_disk(os.path.join(output_path, "short_reads", "tokenized"))
+        if debug_mode:
+            dataset = dataset.select(range(min(1_000, len(dataset))))
+
+    labels = [model.config.id2label[i] for i in range(model.config.num_labels)]
+    collator = DataCollatorWithPadding(
+        tokenizer, padding="longest", pad_to_multiple_of=64, return_tensors="pt"
+    )
+
+    # Shard the dataset across processes ourselves, then snapshot IDs from the
+    # shard. Do NOT pass the loader through accelerator.prepare(): that applies a
+    # second distributed sampler, which would desync the per-rank batches from
+    # the full ordered `shard_ids` list and assign scores to the wrong reads.
+    dataset = dataset.shard(num_shards=accelerator.num_processes, index=accelerator.process_index)
+    shard_ids = (
+        list(dataset["id"])
+        if "id" in dataset.column_names
+        else [str(i) for i in range(len(dataset))]
+    )
+    tensor_cols = [c for c in dataset.column_names if c != "id"]
+    dataset.set_format("torch", columns=tensor_cols)
+
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        collate_fn=collator,
+        pin_memory=True,
+        num_workers=num_workers,
+        persistent_workers=True,
+        prefetch_factor=4,
+    )
+    model = accelerator.prepare(model)
+    model.eval()
+
+    schema = build_score_schema(labels)
+    parquet_path = Path(output_path) / f"scores_accel_{accelerator.process_index}.parquet"
+    try_mkdir(output_path)
+
+    with pq.ParquetWriter(str(parquet_path), schema) as writer:
+        id_cursor = 0
+        with torch.inference_mode(), _autocast_ctx(accelerator.device.type):
+            for batch in tqdm(loader, desc=f"[rank {accelerator.process_index}] classifying"):
+                batch = {k: v.to(accelerator.device) for k, v in batch.items()}
+                logits = model(**batch).logits
+                probs = torch.softmax(logits, dim=-1).float().cpu().numpy()
+                n = len(probs)
+                writer.write_table(
+                    scores_table(shard_ids[id_cursor : id_cursor + n], probs, labels)
+                )
+                id_cursor += n
+
+    accelerator.wait_for_everyone()
+    _elapsed_accel = _time.perf_counter() - _t0
+    logger.log(
+        "STAGE",
+        f"[predict:accelerate_quantify] done — rank={accelerator.process_index} "
+        f"elapsed={_elapsed_accel:.0f} s → {parquet_path}",
+    )
+    logger.info(f"Scores written to {parquet_path}")
+
+
+# ---------------------------------------------------------------------------
+# ONNX export (unchanged)
+# ---------------------------------------------------------------------------
+
 
 @app.command()
 def convert_model_to_onnx(
-    pretrained_model_name: Path = typer.Option(default=None, help="Path to the pretrained model"),
+    pretrained_model_name: Path = typer.Option(default=None),
     opset: int = 14,
-    use_auth_token: bool = False
+    use_auth_token: bool = False,
 ):
-    """
-    Converts a Hugging Face Transformers model to ONNX format using Optimum.
-
-    Args:
-        model_name_or_path (str): Path or model ID of the pretrained model.
-        output_dir (str): Directory to save the ONNX model.
-        opset (int): ONNX opset version.
-        use_auth_token (bool): Whether to use Hugging Face auth token (for private models).
-    """
+    """Export model to ONNX via Optimum."""
     from optimum.exporters.onnx import main_export
 
-    output_dir = os.path.join(MODELS_DIR, pretrained_model_name, 'onnx')
+    output_dir = os.path.join(MODELS_DIR, pretrained_model_name, "onnx")
     try_mkdir(output_dir)
 
-    logger.info("Loading tokenizer ...")
     tokenizer = PreTrainedTokenizerFast.from_pretrained(
-        os.path.join(MODELS_DIR, pretrained_model_name, 'final'),
-        local_files_only=True
+        os.path.join(MODELS_DIR, pretrained_model_name, "final"), local_files_only=True
     )
-
-    # Run the export
     main_export(
-        model_name_or_path=os.path.join(MODELS_DIR, pretrained_model_name, 'final'),
+        model_name_or_path=os.path.join(MODELS_DIR, pretrained_model_name, "final"),
         output=output_dir,
         task="text-classification",
         opset=opset,
         tokenizer=tokenizer,
         trust_remote_code=True,
-        use_auth_token=use_auth_token
+        use_auth_token=use_auth_token,
     )
+    logger.info(f"ONNX model exported to {output_dir}")
 
-    print(f"Model successfully exported to ONNX at: {output_dir}")
-
-@app.command()
-def accelerate_quantify(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    pretrained_model_name: Path = typer.Option(default=None, help="Path to the pretrained model"),
-    output_path: Path = typer.Option(None, help="Path to the output dataset"),
-    batch_size: int = typer.Option(16, help="Chunk size for grouping texts"),
-    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode")
-    # -----------------------------------------
-):
-    # Imports
-    from transformers import AlbertForSequenceClassification
-
-    accelerator = Accelerator()
-    with accelerator.main_process_first():
-        debug_callback(debug)
-        
-        logger.info("Set model from pretrained ...")
-        model = AlbertForSequenceClassification.from_pretrained(os.path.join(MODELS_DIR, pretrained_model_name, 'final'), 
-                                                                attn_implementation="sdpa")
-        model_num_parameters = model.num_parameters() / 1_000_000
-        logger.info(f"'Custom Genomics AlBERT number of parameters: {round(model_num_parameters)}M'")
-        logger.info("Original ALBERT number of parameters: 11M")
-        logger.info("Original BERT number of parameters: 110M")
-        model = torch.compile(model, backend="inductor", mode="max-autotune", fullgraph=True)
-        # TODO: arg.load_from_cache:
-        logger.info("Loading and processing dataset")
-        processed_dataset = load_from_disk(os.path.join(output_path, 'short_reads', 'tokenized'))
-        if debug_mode:
-            logger.debug("Downsampling pretokenized dataset")
-            dataset_size = 1_000
-            processed_dataset = processed_dataset.select(np.random.randint(len(processed_dataset), size=dataset_size))
-            pass
-
-        logger.info("Loading pretrained tokenizer")
-        logger.info("Set tokenizer from pretrained ...")
-        tokenizer = PreTrainedTokenizerFast.from_pretrained(pretrained_model_name_or_path = os.path.join(MODELS_DIR, pretrained_model_name, 'final'),
-                                                            local_files_only=True)
-
-        tokenizer.post_processor = processors.TemplateProcessing(
-                single="[CLS]:0 $A:0 [SEP]:0",
-                pair="[CLS]:0 $A:0 [SEP]:0 $B:1 [SEP]:1",
-                special_tokens=[
-                    ("[CLS]", tokenizer.convert_tokens_to_ids("[CLS]")),
-                    ("[SEP]", tokenizer.convert_tokens_to_ids("[SEP]")),
-                ],
-            )
-
-        data_collator = DataCollatorWithPadding(tokenizer)
-    # Prepare model and dataloader with accelerator
-    model, processed_dataset = accelerator.prepare(model, processed_dataset)
-    # Collect logits scores
-    class_scores = []
-    model.eval()
-    with torch.no_grad():
-        for batch in tqdm(processed_dataset.iter(batch_size=batch_size), desc=f"classifying {accelerator.process_index}", total=len(processed_dataset)):
-            batch = data_collator(batch)
-            logits = model(**batch).logits
-            class_scores.append(logits.cpu().numpy())
-
-    # Gather results
-    accelerator.wait_for_everyone()
-    class_scores = accelerator.gather(class_scores)
-
-    with accelerator.main_process_first():
-        with open(os.path.join(output_path, 'accelerate_class_scores.pkl'), 'wb') as f:
-            pickle.dump(class_scores, f)
-        logger.info(f"Quantification finished. Saved in '{output_path}'")
-    pass
 
 if __name__ == "__main__":
     app()

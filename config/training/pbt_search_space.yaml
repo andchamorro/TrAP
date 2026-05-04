@@ -1,0 +1,50 @@
+# Population-Based Training (PBT) search space — classification fine-tuning.
+#
+# Reviewer #23 asked for BOTH the search space and the final config. The final
+# config lives in config/training/classification_final.json (PBT-derived:
+# lr=8.64491338167939e-05, weight_decay=0.17959754525911098, warmup_ratio=0.1,
+# per_device_train_batch_size=16).
+#
+# RECONSTRUCTED: the original Ray Tune recipe was not version-controlled. This
+# space is reconstructed to be consistent with — and to contain — the final
+# values. Mark it as reconstructed in the response letter (plan §12.5).
+#
+# SUPERSEDED for the re-do by config/tuning/classification_optuna.yaml (Optuna +
+# Hyperband, loaded by `trap.modeling.tune`). This file is kept only as the
+# historical record of the original Ray-Tune/PBT search space; it is not loaded
+# by code.
+
+scheduler: PopulationBasedTraining
+metric: eval_f1
+mode: max
+perturbation_interval: 1            # epochs
+population_size: 8
+quantile_fraction: 0.25
+resample_probability: 0.25
+
+# Hyperparameter search space (Ray Tune samplers)
+search_space:
+  learning_rate:
+    sampler: loguniform
+    low: 1.0e-5
+    high: 1.0e-3
+  weight_decay:
+    sampler: uniform
+    low: 0.0
+    high: 0.3
+  warmup_ratio:
+    sampler: choice
+    values: [0.0, 0.05, 0.1, 0.2]
+  per_device_train_batch_size:
+    sampler: choice
+    values: [8, 16, 32]
+  num_train_epochs:
+    sampler: choice
+    values: [3, 5, 8]
+
+# Fixed across the population
+fixed:
+  seed: 3469
+  bf16: true
+  eval_strategy: epoch
+  metric_for_best_model: f1
