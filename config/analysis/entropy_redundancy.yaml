@@ -1,0 +1,52 @@
+# Entropy / redundancy k-mer analysis (validated by KmerSpectrumConfigSchema).
+#
+# Produces one spectrum per corpus plus a k -> classification ablation, then the
+# quantitative k-selection report.  Paths match scripts/data/fetch_references.sh
+# / scripts/data/fetch_entropy_inputs.py.  Run with:
+#
+#   python -m trap.analysis run --config config/analysis/entropy_redundancy.yaml
+#
+# All randomness (subsampling, bootstrap, CV folds) is seeded; re-running with
+# the same seed reproduces byte-identical CSVs.
+
+corpora:
+  gencode_v48: data/external/gencode.v48.transcripts.fa.gz
+  l1_repeatmasker: data/external/GCF_000001405.40_GRCh38.p14_rm.LINE1.gencode.v48.fa
+file_format: fasta
+
+# Sweep k from short (high redundancy) through the manuscript's k=16/17 region.
+k_min: 2
+k_max: 20
+
+# Rarefaction: nested seeded subsamples expose sampling saturation vs a real
+# plateau.  Replicates give the variability band on fractions < 1.0.
+subsample_fracs: [0.1, 0.25, 0.5, 0.75, 1.0]
+replicates: 3
+bootstrap: 100
+alpha: 0.05
+
+# Forward-strand counting matches transcript orientation / the tokenizer.
+# Set true for strand-agnostic corpora (Salmon/jellyfish convention).
+canonical: false
+chunk_size: 2000
+seed: 3469
+
+# k -> classification ablation (Reviewer 3).
+ablation_reads: data/external/l1hs_l1pa2_negative.5x_sample_R1.fq
+ablation_max_per_class: 5000
+ablation_n_features: 262144
+ablation_n_splits: 5
+
+# Quantitative selection gates.
+#   saturation_epsilon : max relative H change 50% <-> 100% subsample
+#   marginal_gain_tau  : min bias-corrected dH/dk (bits) to still "gain"
+saturation_epsilon: 0.01
+marginal_gain_tau: 0.05
+
+# Jellyfish initial hash-table size (-s).  "1G" avoids resize passes for
+# GENCODE v48 at k≤20 (~500M distinct k-mers at frac=1.0); lower on
+# memory-constrained nodes (e.g. "500M").
+jf_hash_size: "1G"
+
+output_dir: results/entropy_redundancy
+verbosity: normal
