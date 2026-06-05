@@ -1,0 +1,9 @@
+# Sphinx documentation dependencies
+# Install with: pip install -r docs/requirements.txt
+
+sphinx>=7.2
+furo>=2024.1.29             # theme
+myst-parser>=3.0            # .md source files alongside .rst
+sphinx-autodoc-typehints>=2.0
+sphinx-copybutton>=0.5      # copy button on code blocks
+sphinxcontrib-bibtex>=2.6   # cite manuscript
