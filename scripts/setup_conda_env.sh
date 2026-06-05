@@ -21,6 +21,23 @@ ENV_FILE="envs/environment.yml"
 ENV_NAME="trap"
 CMD="create"
 
+conda_run_clean() {
+    env \
+        -u CONDA_PREFIX \
+        -u CONDA_DEFAULT_ENV \
+        -u CONDA_PROMPT_MODIFIER \
+        -u CONDA_SHLVL \
+        -u CONDA_BACKUP_CC \
+        -u CONDA_BACKUP_CXX \
+        -u CC \
+        -u CXX \
+        -u CPPFLAGS \
+        -u CFLAGS \
+        -u CXXFLAGS \
+        -u LDFLAGS \
+        "$@"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dev)
@@ -58,27 +75,31 @@ echo "Repo root: ${REPO_ROOT}"
 echo ""
 
 if [[ "${CMD}" == "create" ]]; then
-    conda env create --name "${ENV_NAME}" -f "${ENV_FILE}"
+    conda_run_clean conda env create --name "${ENV_NAME}" -f "${ENV_FILE}"
 elif [[ "${CMD}" == "update" ]]; then
-    conda env update --name "${ENV_NAME}" -f "${ENV_FILE}" --prune
+    conda_run_clean conda env update --name "${ENV_NAME}" -f "${ENV_FILE}" --prune
 fi
 
 # Editable install must be done from repo root — conda resolves `-e .` relative
 # to the YAML file's directory, which would point into envs/ instead of the package.
 echo ""
 echo "Installing TrAP in editable mode..."
-conda run -n "${ENV_NAME}" pip install -e "${REPO_ROOT}"
+conda_run_clean conda run -n "${ENV_NAME}" pip install -e "${REPO_ROOT}"
 
 # Register the Python kernel so the base-env Jupyter sees this env.
 echo ""
 echo "Registering Python kernel (${ENV_NAME})..."
-conda run -n "${ENV_NAME}" python -m ipykernel install \
+conda_run_clean conda run -n "${ENV_NAME}" python -m ipykernel install \
     --user --name "${ENV_NAME}" --display-name "Python (${ENV_NAME})"
 
 # Install R packages and register the R kernel.
 echo ""
 echo "Installing R packages and registering R kernel..."
-conda run -n "${ENV_NAME}" --no-capture-output Rscript "${REPO_ROOT}/envs/r-packages.R"
+conda_run_clean \
+    R_PROFILE_USER=/dev/null \
+    R_ENVIRON_USER=/dev/null \
+    R_MAKEVARS_USER=/dev/null \
+    conda run -n "${ENV_NAME}" --no-capture-output Rscript "${REPO_ROOT}/envs/r-packages.R"
 
 echo ""
 echo "✓ Done. Activate with:  conda activate ${ENV_NAME}"

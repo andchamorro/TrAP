@@ -1,0 +1,14 @@
+/* Minor style overrides for TrAP docs */
+
+/* Slightly wider content area for code-heavy pages */
+.wy-nav-content {
+    max-width: 1000px;
+}
+
+/* Monospace DNA sequences stand out */
+code.dna {
+    color: #2980b9;
+    background: #eaf4fb;
+    padding: 1px 4px;
+    border-radius: 3px;
+}

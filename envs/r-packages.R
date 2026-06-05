@@ -17,8 +17,12 @@
 ###############################################################################
 
 # If this repo is opened as an renv project, `.Rprofile` may activate renv and
-# shim installation helpers. Use base installers explicitly.
-Sys.setenv(RENV_CONFIG_AUTOLOADER_ENABLED = "FALSE")
+# shim installation helpers. User-level R config can also inject compiler flags
+# that break conda R package builds on macOS.
+Sys.setenv(
+  RENV_CONFIG_AUTOLOADER_ENABLED = "FALSE",
+  R_MAKEVARS_USER = "/dev/null"
+)
 
 conda_lib <- R.home("library")
 .libPaths(conda_lib)
