@@ -113,7 +113,15 @@ def load_tuned_tokenizer(tokenizer_path, max_position: int) -> PreTrainedTokeniz
 
 
 def make_compute_classification_metrics():
-    """Return a ``compute_metrics`` callable (accuracy/f1/precision/recall/roc_auc, micro)."""
+    """Return a ``compute_metrics`` callable (accuracy + macro f1/precision/recall/roc_auc).
+
+    F1/precision/recall are **macro**-averaged (unweighted mean over classes) so
+    the minority retroelement classes (L1HS ~0.3%, L1PA ~10% of the train split)
+    count as much as the NEGATIVE majority (~89%). Micro-F1 equals accuracy for
+    single-label multiclass, so selecting on it (``metric_for_best_model="f1"``)
+    would reward a NEGATIVE-collapsed classifier; ``accuracy`` below still reports
+    that overall/micro view. Matches the macro-F1 acceptance target (plan §7.4).
+    """
     from scipy.special import softmax as scipy_softmax
     from sklearn.metrics import roc_auc_score
 
@@ -137,11 +145,11 @@ def make_compute_classification_metrics():
             roc_auc = float("nan")
         return {
             "accuracy": accuracy.compute(predictions=predictions, references=labels)["accuracy"],
-            "f1": f1.compute(predictions=predictions, references=labels, average="micro")["f1"],
+            "f1": f1.compute(predictions=predictions, references=labels, average="macro")["f1"],
             "precision": precision.compute(
-                predictions=predictions, references=labels, average="micro"
+                predictions=predictions, references=labels, average="macro", zero_division=0
             )["precision"],
-            "recall": recall.compute(predictions=predictions, references=labels, average="micro")[
+            "recall": recall.compute(predictions=predictions, references=labels, average="macro")[
                 "recall"
             ],
             "roc_auc": roc_auc,
@@ -475,6 +483,63 @@ class MaskingTrainer(Trainer):
                 self._eval_dataloaders = {dataloader_key: eval_dataloader}
 
         return self.accelerator.prepare(eval_dataloader)
+
+
+def compute_class_weights(labels, num_labels: int, scheme: str = "balanced") -> np.ndarray:
+    """Per-class loss weights to counter class imbalance.
+
+    ``"balanced"`` reproduces sklearn's heuristic ``w_c = N / (num_labels *
+    count_c)``: rarer classes get proportionally larger weights, and the weighted
+    average weight is 1, so the loss scale (and the smoke gate's ``ln(num_labels)``
+    baseline) is preserved. Classes absent from ``labels`` get weight 0 (no
+    samples ever back-propagate through them).
+
+    Args:
+        labels: Integer label per training example.
+        num_labels: Number of classes (length of the returned vector).
+        scheme: Currently only ``"balanced"``.
+
+    Returns:
+        ``float32`` array of length ``num_labels``.
+    """
+    if scheme != "balanced":
+        raise ValueError(f"Unknown class_weighting scheme {scheme!r} (expected 'balanced').")
+    counts = np.bincount(np.asarray(labels, dtype=np.int64), minlength=num_labels).astype(
+        np.float64
+    )
+    total = counts.sum()
+    weights = np.zeros(num_labels, dtype=np.float64)
+    nz = counts > 0
+    weights[nz] = total / (num_labels * counts[nz])
+    return weights.astype(np.float32)
+
+
+class WeightedLossTrainer(Trainer):
+    """``Trainer`` with class-weighted cross-entropy for sequence classification.
+
+    Identical to the default loss except for the per-class ``weight`` vector, so
+    the severe L1 imbalance (NEGATIVE ~89% vs L1HS ~0.3%) does not collapse the
+    classifier onto the majority class. Pass ``class_weights`` (computed once from
+    the train-split frequencies via :func:`compute_class_weights`); ``None``
+    falls back to unweighted loss.
+
+    Args:
+        class_weights: Length-``num_labels`` weight vector, or ``None``.
+    """
+
+    def __init__(self, *args, class_weights=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.class_weights = (
+            None if class_weights is None else torch.as_tensor(class_weights, dtype=torch.float32)
+        )
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        logits = outputs.logits
+        weight = None if self.class_weights is None else self.class_weights.to(logits.device)
+        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1), weight=weight)
+        return (loss, outputs) if return_outputs else loss
 
 
 class DistillationTrainer(Trainer):
@@ -850,6 +915,9 @@ def classification(
     data_collator = DataCollatorWithPadding(tokenizer)
 
     _trainer_cfg = _resolve_precision(_read_config_dict(trainer_config_path))
+    # class_weighting is a TrAP-only key, not a TrainingArguments field; pop it
+    # before constructing TrainingArguments (which rejects unknown kwargs).
+    class_weighting = _trainer_cfg.pop("class_weighting", None)
     set_global_seed(_trainer_cfg.get("seed", 3469))
     trainer_args = TrainingArguments(**_trainer_cfg)
     trainer_args.output_dir = os.path.join(MODELS_DIR, model_name)
@@ -863,8 +931,21 @@ def classification(
 
     compute_metrics = make_compute_classification_metrics()
 
+    # Class-weighted loss to counter the NEGATIVE-dominated split (plan §6/§7.4).
+    # WeightedLossTrainer with class_weights=None is the unweighted default.
+    class_weights = None
+    if class_weighting:
+        class_weights = compute_class_weights(
+            lm_datasets["train"]["label"], num_labels, scheme=class_weighting
+        )
+        logger.log(
+            "STAGE",
+            f"[train:classification] class_weighting={class_weighting!r} weights="
+            + ", ".join(f"{id2label[i]}={w:.3g}" for i, w in enumerate(class_weights)),
+        )
+
     try_mkdir(trainer_args.output_dir)
-    trainer = Trainer(
+    trainer = WeightedLossTrainer(
         model=model,
         args=trainer_args,
         train_dataset=lm_datasets["train"],
@@ -872,6 +953,7 @@ def classification(
         processing_class=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
+        class_weights=class_weights,
     )
     logger.log("STAGE", "[train:classification] training started")
     train_result = trainer.train()
@@ -898,6 +980,7 @@ def classification(
                 "vocab_size": int(model.config.vocab_size),
                 "tokenizer_len": len(tokenizer),
                 "pretrained_from": str(pretrained_model_path) if pretrained_model_path else None,
+                "class_weighting": class_weighting,
             },
             throughput={"train_runtime_s": metrics.get("train_runtime")},
         )

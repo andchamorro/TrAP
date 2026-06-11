@@ -1,5 +1,6 @@
 {
     "seed": 3469,
+    "class_weighting": "balanced",
     "num_train_epochs": 5,
     "eval_strategy": "epoch",
     "save_strategy": "epoch",

@@ -168,6 +168,66 @@ class TestComputeClassificationMetrics:
         result = compute_metrics((logits, labels))
         assert np.isnan(result["roc_auc"])
 
+    @pytest.mark.unit
+    def test_f1_is_macro_not_micro(self):
+        """F1 must be macro-averaged so minority collapse is penalised.
+
+        A classifier that always predicts the majority class on an imbalanced
+        batch gets micro-F1 == accuracy (0.8 here) but macro-F1 == 0.444. The
+        gap is the regression guard against reverting to ``average="micro"``,
+        which would let ``metric_for_best_model="f1"`` reward NEGATIVE collapse.
+        """
+        pytest.importorskip("accelerate", reason="accelerate not installed")
+        pytest.importorskip("sklearn", reason="scikit-learn not installed")
+        from trap.modeling.train import make_compute_classification_metrics
+
+        compute_metrics = make_compute_classification_metrics()
+        # 4 majority (class 0) + 1 minority (class 1); always predict class 0.
+        logits = np.array([[10.0, -10.0]] * 4 + [[10.0, -10.0]])
+        labels = np.array([0, 0, 0, 0, 1])
+        result = compute_metrics((logits, labels))
+        assert result["accuracy"] == pytest.approx(0.8)  # micro view unchanged
+        assert result["f1"] == pytest.approx(0.4444, abs=1e-3)  # macro << accuracy
+        assert result["f1"] < result["accuracy"]
+
+
+class TestComputeClassWeights:
+    """``compute_class_weights`` derives balanced per-class loss weights."""
+
+    @pytest.mark.unit
+    def test_balanced_weighted_average_is_one(self):
+        """Balanced weights preserve the loss scale: sum(w_c * count_c)/N == 1.
+
+        This keeps the smoke gate's ``ln(num_labels)`` baseline valid under the
+        weighted loss (the expected weighted CE at uniform logits stays ln K).
+        """
+        from trap.modeling.train import compute_class_weights
+
+        counts = [15950, 506025, 4286350]  # real L1HS/L1PA/NEGATIVE train counts
+        labels = np.concatenate([np.full(c, i) for i, c in enumerate(counts)])
+        w = compute_class_weights(labels, 3)
+        cvec = np.array(counts, dtype=float)
+        assert (cvec * w).sum() / cvec.sum() == pytest.approx(1.0, abs=1e-5)
+        # rarer class gets the larger weight
+        assert w[0] > w[1] > w[2]
+
+    @pytest.mark.unit
+    def test_absent_class_gets_zero_weight_no_nan(self):
+        """A class missing from a (debug-subset) label vector → weight 0, finite."""
+        from trap.modeling.train import compute_class_weights
+
+        labels = np.array([2, 2, 2, 1, 2, 2, 1, 2, 2, 2])  # no class 0
+        w = compute_class_weights(labels, 3)
+        assert w[0] == 0.0
+        assert np.isfinite(w).all()
+
+    @pytest.mark.unit
+    def test_unknown_scheme_raises(self):
+        from trap.modeling.train import compute_class_weights
+
+        with pytest.raises(ValueError, match="class_weighting"):
+            compute_class_weights(np.array([0, 1, 2]), 3, scheme="sqrt")
+
 
 class TestMlmPreprocessLogitsForMetrics:
     """``mlm_preprocess_logits_for_metrics`` collapses the vocab axis on-device."""
