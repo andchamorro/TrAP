@@ -14,17 +14,23 @@
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --mail-type=END,FAIL
 #
-# Stage 4 — classification fine-tuning (L1HS / L1PA / NEGATIVE) on top of the
-# MLM-pretrained checkpoint (plan §6.4). PBT-final hyperparameters live in
-# config/training/classification_final.json.
+# Stage 4 — classification fine-tuning (L1HS / L1PA / NEGATIVE) from a
+# RANDOM-INIT classifier (Track A: MLM pre-training is dropped — the hashed
+# k-mer vocab makes MLM unlearnable; see legacy/mlm/README.md). Built from
+# ALBERT_CONFIG (vocab 65541) + the salmon tokenizer, with class-weighted loss.
+# PBT-final hyperparameters live in config/training/classification_final.json.
 
 source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"
 load_gpu_modules
 activate_trap
 
+# Track A: no --pretrained-model-path, so model_init builds a random-init
+# AlbertForSequenceClassification from ALBERT_CONFIG. For the optional P3
+# MLM-init ablation, add --pretrained-model-path "${MODEL_MLM}".
 accelerate launch $(accelerate_args) "${REPO_ROOT}/trap/modeling/train.py" classification \
     "${MODEL_CLS}" \
-    --pretrained-model-path "${MODEL_MLM}" \
+    --pretrained-tokenizer-path "${TOKENIZER_PATH}" \
+    --albert-config-path "${ALBERT_CONFIG}" \
     --trainer-config-path "${CLS_TRAINER_CONFIG}" \
     --k "${K}" \
     --preprocessing-name "${PROCESSING_NAME}" \

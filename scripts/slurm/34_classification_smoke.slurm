@@ -12,13 +12,15 @@
 #SBATCH --mail-type=END,FAIL
 #
 # Stage 34 — classification pre-flight smoke GATE. Fine-tunes a few hundred
-# steps on a 1k-row debug subset (single GPU) from the MLM checkpoint and FAILS
-# the job if the loss does not drop below the uniform-random baseline
-# ln(num_labels) — i.e. the classifier is not learning (frozen backbone, wrong
-# LR, or label/range mismatch).
+# steps on a 1k-row debug subset (single GPU) from a RANDOM-INIT classifier
+# (Track A: no MLM pre-training) and FAILS the job if the loss does not drop
+# below the uniform-random baseline ln(num_labels) — i.e. the classifier is not
+# learning (wrong LR, vocab/embedding mismatch, or label/range mismatch).
 #
-# Wired before 35_tune_classification / 40_classification. Needs the MLM
-# checkpoint from 30_mlm_pretrain, so it sits after stage 30.
+# Track A wiring: the random-init AlbertForSequenceClassification is built from
+# ALBERT_CONFIG (vocab 65541), the salmon tokenizer from TOKENIZER_PATH, and the
+# class-weighted loss in classification.smoke.json. No MLM checkpoint required.
+# Wired before 35_tune_classification / 40_classification.
 #
 # Direct run:
 #   RUN_CONFIG=config/runs/salmon.yaml sbatch scripts/slurm/34_classification_smoke.slurm
@@ -35,9 +37,14 @@ MARGIN="${CLS_SMOKE_MARGIN:-0.2}"
 
 rm -rf "${SMOKE_OUT}"
 
+# Track A: random-init classifier. Build from ALBERT_CONFIG + the salmon
+# tokenizer (no --pretrained-model-path, so model_init falls back to from-config
+# random init). For the optional P3 MLM-init ablation, add
+# --pretrained-model-path "${MODEL_MLM}".
 python "${REPO_ROOT}/trap/modeling/train.py" classification \
     "${SMOKE_MODEL}" \
-    --pretrained-model-path "${MODEL_MLM}" \
+    --pretrained-tokenizer-path "${TOKENIZER_PATH}" \
+    --albert-config-path "${ALBERT_CONFIG}" \
     --trainer-config-path "${SMOKE_CONFIG}" \
     --k "${K}" \
     --preprocessing-name "${PROCESSING_NAME}" \
