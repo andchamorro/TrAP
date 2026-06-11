@@ -33,7 +33,10 @@ activate_trap
 SMOKE_MODEL="smoke.${MODEL_CLS}"
 SMOKE_CONFIG="${CLS_SMOKE_CONFIG:-${REPO_ROOT}/config/training/classification.smoke.json}"
 SMOKE_OUT="${MODELS_DIR}/${SMOKE_MODEL}"
-MARGIN="${CLS_SMOKE_MARGIN:-0.2}"
+# 0.1-nat margin for random-init (Track A). A pretrained backbone drops faster;
+# 0.2 was the MLM-init calibration. 0.1 still proves learning while allowing for
+# the slower early descent of a randomly-initialised classifier.
+MARGIN="${CLS_SMOKE_MARGIN:-0.1}"
 
 rm -rf "${SMOKE_OUT}"
 
@@ -69,8 +72,9 @@ if loss is None or not (loss < uniform - margin):
     print(
         "[34_classification_smoke] FAIL: loss did not drop below the uniform "
         "baseline — the classifier is NOT learning. Before launching "
-        "40_classification, check the pretrained backbone is loaded (not random), "
-        "the learning rate, and that labels are in range."
+        "40_classification, check the learning rate, class_weighting in the "
+        "smoke config, that labels are in range, and that the tokenizer/ALBERT "
+        "config match the dataset (vocab 65541)."
     )
     sys.exit(1)
 print("[34_classification_smoke] PASS: classification training reduces loss.")
