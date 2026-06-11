@@ -298,9 +298,17 @@ export CLS_SEARCH_CONFIG="${CLS_SEARCH_CONFIG:-${REPO_ROOT}/config/tuning/classi
 export MLM_SEARCH_CONFIG="${MLM_SEARCH_CONFIG:-${REPO_ROOT}/config/tuning/mlm_optuna.yaml}"
 
 # --- GPU / accelerate ------------------------------------------------------
+# Emits a DDP launch for GPUS_PER_NODE>=2, or a single-process launch for
+# GPUS_PER_NODE<=1 (accelerate rejects --multi_gpu with one process). This lets
+# any DDP stage fall back to one GPU via `GPUS_PER_NODE=1 sbatch --gres=gpu:...:1`
+# (e.g. to sidestep a node's NCCL/old-kernel multi-GPU instability).
 accelerate_args() {
-    echo "--multi_gpu --num_machines 1 --num_processes=${GPUS_PER_NODE}" \
-         "--mixed_precision bf16 --dynamo_backend no"
+    if [[ "${GPUS_PER_NODE:-2}" -le 1 ]]; then
+        accelerate_args_single
+    else
+        echo "--multi_gpu --num_machines 1 --num_processes=${GPUS_PER_NODE}" \
+             "--mixed_precision bf16 --dynamo_backend no"
+    fi
 }
 
 # SINGLE-process (one GPU, NO DDP) launch — used by the Optuna HPO stages
