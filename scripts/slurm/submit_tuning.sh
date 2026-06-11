@@ -1,11 +1,11 @@
 #!/bin/bash
 # Submit the OPTIONAL Optuna tuning sweep: a job array of workers on a shared
 # study, then a single tune_finalize (afterok) that writes the
-# config/training/*.tuned.json the 30/40 stages can consume. Run from anywhere:
+# config/training/*.tuned.json the 40 stage can consume. Run from anywhere:
 #
-#   bash scripts/slurm/submit_tuning.sh                                      # both MLM + cls
+# Track A: MLM tuning is dropped; only the classification sweep runs.
+#   bash scripts/slurm/submit_tuning.sh                                      # cls (default)
 #   bash scripts/slurm/submit_tuning.sh --classification                      # cls only
-#   bash scripts/slurm/submit_tuning.sh --mlm                                 # MLM only
 #   bash scripts/slurm/submit_tuning.sh --run-config config/runs/salmon.yaml  # salmon tokenizer
 #   bash scripts/slurm/submit_tuning.sh --dry-run                             # print chain only
 #   bash scripts/slurm/submit_tuning.sh --account 123456789                   # override account
@@ -51,7 +51,11 @@ while [[ $# -gt 0 ]]; do
         --account) ACCOUNT_OVERRIDE="$2"; shift 2 ;;
         --run-config) RUN_CONFIG="$2"; shift 2 ;;
         --classification|--cls) DO_CLS=1; shift ;;
-        --mlm) DO_MLM=1; shift ;;
+        --mlm)
+            echo "error: --mlm is DEPRECATED (Track A drops MLM pre-training)." >&2
+            echo "  MLM tuning stages are shelved in scripts/slurm/legacy/mlm/." >&2
+            echo "  See scripts/slurm/legacy/mlm/README.md." >&2
+            exit 1 ;;
         -h|--help) usage; exit 0 ;;
         *) EXTRA+=("$1"); shift ;;
     esac
@@ -62,9 +66,9 @@ done
 
 [[ -n "${ACCOUNT_OVERRIDE}" ]] && SLURM_ACCOUNT="${ACCOUNT_OVERRIDE}"
 
-# Default: run both sweeps.
+# Default: classification sweep only (MLM is dropped under Track A).
 if [[ "$DO_CLS" == "0" && "$DO_MLM" == "0" ]]; then
-    DO_CLS=1; DO_MLM=1
+    DO_CLS=1
 fi
 
 mkdir -p logs

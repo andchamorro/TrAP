@@ -79,6 +79,17 @@ _load_run_config() {
         return
     }
     eval "${vars}"
+    # SentencePiece is deprecated: its metaspace/Whitespace pre-tokenizer mismatch
+    # fragments each k-mer into ~16 char-level pieces, silently destroying the
+    # tokenization. Use the Salmon canonical k-mer tokenizer (config/runs/salmon.yaml).
+    if [[ "${TOKENIZER_ALGORITHM:-}" == "spm" || "${TOKENIZER_NAME:-}" == *.spm ]]; then
+        echo "[_common] ERROR: SentencePiece (spm) tokenizer is DEPRECATED and disabled." >&2
+        echo "  Run config '${run_cfg}' selects algorithm=spm / a .spm tokenizer." >&2
+        echo "  Reason: metaspace pre-tokenizer mismatch fragments k-mers (~16 char" >&2
+        echo "          pieces each), silently corrupting the tokenized dataset." >&2
+        echo "  Fix: use config/runs/salmon.yaml (canonical k-mer tokenizer)." >&2
+        exit 1
+    fi
     echo "[_common] run config loaded: ${run_cfg}"
 }
 
@@ -209,6 +220,11 @@ mkdir -p "${HF_DATASETS_CACHE}" 2>/dev/null || true
 # --- Canonical Phase-3 parameters -----------------------------------------
 # (mirror config/datasets/l1hs_l1pa2_v48_k17.yaml — keep both in sync)
 export K="${K:-17}"
+# VOCAB is a LABEL ONLY for the legacy SPM/BPE tokenizer training arg — it does
+# NOT set the model's effective vocab. The Salmon tokenizer (current default)
+# ignores it: its vocab is 5 specials + n_hash buckets (= 65541 at n_hash=65536),
+# and train.py overrides albert_config.vocab_size from len(tokenizer) at runtime.
+# Do not read this as the model vocab; the per-run manifest records the real one.
 export VOCAB="${VOCAB:-32000}"
 export MAX_POSITION="${MAX_POSITION:-1280}"
 # Classification uses short paired reads (150bp, k=17 → 271 real tokens).

@@ -731,6 +731,16 @@ def load_kmer_tokenizer(tokenizer_path, max_position=None):
     from trap.loaders.salmon_tokenizer import CONFIG_FILE, SalmonKmerTokenizer
 
     path = str(tokenizer_path)
+    # SentencePiece is deprecated (metaspace/Whitespace mismatch fragments each
+    # k-mer into ~16 char-level pieces). Reject .spm tokenizers loudly rather than
+    # let them silently corrupt a run; use the Salmon canonical k-mer tokenizer.
+    if path.rstrip("/").endswith(".spm") or os.path.exists(os.path.join(path, "spm.model")):
+        raise ValueError(
+            f"SentencePiece (.spm) tokenizer is DEPRECATED and disabled: {path}. "
+            "Its metaspace pre-tokenizer fragments k-mers (~16 char pieces each), "
+            "silently corrupting tokenization. Use a Salmon canonical k-mer "
+            "tokenizer (built via `python -m trap.loaders.tokenizer salmon_index`)."
+        )
     if os.path.exists(os.path.join(path, CONFIG_FILE)):
         tokenizer = SalmonKmerTokenizer.from_pretrained(path, local_files_only=True)
     else:
@@ -903,9 +913,16 @@ def train(
 
     if corpus is None:
         raise typer.BadParameter("Provide --corpus (or a config with a 'corpus' field).")
-    if algorithm not in ("bpe", "spm", "unigram", "wordpiece"):
+    if algorithm == "spm":
         raise typer.BadParameter(
-            f"Unknown algorithm {algorithm!r}; expected 'bpe', 'spm', 'unigram', or 'wordpiece'."
+            "SentencePiece (spm) is DEPRECATED and disabled: its metaspace "
+            "pre-tokenizer fragments k-mers (~16 char pieces each), silently "
+            "corrupting tokenization. Use the Salmon canonical k-mer tokenizer "
+            "(`python -m trap.loaders.tokenizer salmon_index`)."
+        )
+    if algorithm not in ("bpe", "unigram", "wordpiece"):
+        raise typer.BadParameter(
+            f"Unknown algorithm {algorithm!r}; expected 'bpe', 'unigram', or 'wordpiece'."
         )
 
     # ------------------------------------------------------------------
