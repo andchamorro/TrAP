@@ -1,5 +1,10 @@
 """Unit tests for the Salmon-consistent canonical k-mer tokenizer."""
 
+import os
+import subprocess
+import sys
+import textwrap
+
 import numpy as np
 import pytest
 
@@ -45,6 +50,12 @@ class TestSpecialTokens:
     def test_emitted_ids_within_len(self, tokenizer, read):
         ids = tokenizer.batch_encode_sequences([read])["input_ids"][0]
         assert max(ids) < len(tokenizer)
+
+    def test_all_ids_in_valid_range(self, tokenizer, read):
+        # Every emitted id must satisfy 0 <= id < vocab_size: a negative id (hash
+        # sign bug) or an over-range id both trip a CUDA embedding gather OOB.
+        ids = tokenizer.batch_encode_sequences([read])["input_ids"][0]
+        assert all(0 <= i < tokenizer.vocab_size for i in ids)
 
 
 @pytest.mark.unit
@@ -113,6 +124,34 @@ class TestPadding:
     def test_truncation_respects_max_length(self, tokenizer, read):
         enc = tokenizer.batch_encode_sequences([read], max_length=10, truncation=True)
         assert len(enc["input_ids"][0]) <= 10
+
+
+@pytest.mark.unit
+class TestCrossProcessDeterminism:
+    def test_same_ids_from_fresh_interpreter(self, tokenizer, read):
+        # splitmix64 is a pure function of the canonical code, so the hashed ids
+        # must not depend on per-process state (PYTHONHASHSEED, dict ordering).
+        # A drift here would silently invalidate a tokenized dataset across the
+        # many independent stage-20 worker processes.
+        in_process = tokenizer.batch_encode_sequences([read])["input_ids"][0]
+        script = textwrap.dedent(f"""
+            from trap.loaders.salmon_tokenizer import SalmonKmerTokenizer
+            tok = SalmonKmerTokenizer(k={K}, n_hash=4096)
+            ids = tok.batch_encode_sequences([{read!r}])["input_ids"][0]
+            print(",".join(str(i) for i in ids))
+            """)
+        # Force a different hash seed than the parent so any dict/set-ordering
+        # dependence in the id mapping would surface as a mismatch.
+        env = {**os.environ, "PYTHONHASHSEED": "1"}
+        out = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=True,
+            env=env,
+        )
+        fresh = [int(x) for x in out.stdout.strip().split(",")]
+        assert fresh == in_process
 
 
 @pytest.mark.unit

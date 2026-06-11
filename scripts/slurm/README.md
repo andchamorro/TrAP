@@ -1,27 +1,26 @@
 # TrAP training reproduction pipeline — Grace HPRC
 
 Phase-3 of `.trap/plans/perf-and-reproducibility-plan.md` (§6): a config-driven,
-manifest-stamped pipeline for the clean **k=17 / GENCODE v48 / 32k-vocab** re-do,
-orchestrated as an `sbatch --dependency=afterok` chain on the TAMU **Grace**
-cluster (Cascade Lake; GPU stages default to **2× A100 40 GB**).
+manifest-stamped pipeline for the clean **k=17 / GENCODE v48** re-do, orchestrated
+as an `sbatch --dependency=afterok` chain on the TAMU **Grace** cluster (Cascade
+Lake; GPU stages default to **2× A100 40 GB**).
+
+> **Track A (no MLM pre-training).** The MLM pre-training phase is dropped: the
+> Salmon canonical k-mer vocabulary is feature-hashed, which makes the masked-LM
+> objective unlearnable (loss freezes at `H(unigram) ≈ ln(vocab)`; full diagnosis
+> in `.trap/plans/mlm-pretraining-freeze-action-plan.md`). The classifier is
+> fine-tuned **from random init**. The shelved MLM stages (`24_mlm_smoke`,
+> `25_tune_mlm`, `30_mlm_pretrain`) live in `scripts/slurm/legacy/mlm/`.
 
 ```
 00_fetch_references       CPU   GENCODE v48 + GRCh38.p14 download, STAR/BWA indexes
         │
-10_tokenizer              CPU   SentencePiece Unigram k-mer tokenizer (k=17, vocab=32k)
+10_tokenizer              CPU   Salmon canonical k-mer tokenizer (k=17; index/hash build)
         │
 20_dataset                CPU   ART(-f 5) → STAR(multimap 100) → bedtools → label;
-        │                        classification dataset (transcript-level split) +
-        │                        GENCODE masking dataset for MLM
+        │                        classification dataset (transcript-level split)
         │
-24_mlm_smoke              GPU¹  pre-flight GATE: train on a 1k-row subset, FAIL the
-        │                        chain unless MLM loss drops below ln(vocab) — catches
-        │                        a config that cannot learn before the multi-day run
-        │
-   [optional]─┬─ 25_tune_mlm (array)       GPU   Optuna+Hyperband MLM sweep (6 workers)
-              └─ 25_tune_mlm_finalize       CPU   write config/training/mlm.tuned.json
-        │
-30_mlm_pretrain           GPU   ALBERT masked-LM pretraining
+21_dataset_diagnosis      CPU   row-count / token-length / split-leakage diagnostics
         │
 34_classification_smoke   GPU¹  pre-flight GATE: fine-tune on a 1k-row subset, FAIL
         │                        unless loss drops below ln(num_labels)
@@ -29,12 +28,12 @@ cluster (Cascade Lake; GPU stages default to **2× A100 40 GB**).
    [optional]─┬─ 35_tune_classification (array)  GPU   Optuna+Hyperband cls sweep (8 workers)
               └─ 35_tune_classification_finalize  CPU   write classification_final.tuned.json
         │
-40_classification         GPU   fine-tune L1HS / L1PA / NEGATIVE on the MLM checkpoint
+40_classification         GPU   fine-tune L1HS / L1PA / NEGATIVE from random init
         │
 50_benchmark              GPU   streaming `quantify` throughput benchmark + manifest
 ```
 
-¹ The smoke gates run on a **single GPU** (plain `python`, no DDP) so the reported
+¹ The smoke gate runs on a **single GPU** (plain `python`, no DDP) so the reported
 loss is free of the multi-process aggregation artifact and the threshold check is exact.
 
 Each stage writes a `manifest.json` (git commit, seed, k, SHA256s, throughput)
@@ -54,7 +53,7 @@ bash scripts/slurm/submit_pipeline.sh
 bash scripts/slurm/submit_pipeline.sh --dry-run
 
 # run a sub-range / resume after a failure
-bash scripts/slurm/submit_pipeline.sh --from 30_mlm_pretrain
+bash scripts/slurm/submit_pipeline.sh --from 34_classification_smoke
 bash scripts/slurm/submit_pipeline.sh --from 20_dataset --to 40_classification
 
 # list the stages
@@ -65,37 +64,39 @@ Submit a single stage directly (from the repo root, so `$SLURM_SUBMIT_DIR` is co
 
 ```bash
 # GPU stages require --gres and --partition since they are not in the .slurm file
-sbatch --gres=gpu:a100:2 --partition=gpu scripts/slurm/30_mlm_pretrain.slurm
+sbatch --gres=gpu:a100:2 --partition=gpu scripts/slurm/40_classification.slurm
 # CPU stages work as-is
 sbatch scripts/slurm/10_tokenizer.slurm
 ```
 
-## Pre-flight smoke gates (`24_mlm_smoke`, `34_classification_smoke`)
+## Pre-flight smoke gate (`34_classification_smoke`)
 
-These two stages are **gates**, not training stages: they exist to fail *fast and
-loud* when a training config cannot learn, so a misconfiguration never reaches a
-multi-day GPU run.
+This stage is a **gate**, not a training stage: it exists to fail *fast and loud*
+when the classification config cannot learn (or the dataset is malformed), so a
+misconfiguration never reaches a multi-day GPU run.
 
-### Why they exist
+### Why it exists
 
 An MLM pretraining run once executed for **35 hours** and produced a checkpoint
-that had learned *nothing* — the loss sat at the uniform-random baseline
-(`ln(vocab)`) for all 40 epochs and the masked-token accuracy was frozen across
-every epoch. The model weights never moved from their random initialisation. The
-root cause was a learning rate appropriate for *fine-tuning* (`5e-5`) being used
-for *from-scratch* pretraining (which needs `~1e-4..5e-4`), and the failure was
-invisible because:
+that had learned *nothing* — the loss sat at the uniform-random baseline for all
+40 epochs and masked-token accuracy was frozen. The root cause was **structural,
+not a hyperparameter**: the Salmon tokenizer feature-hashes canonical k-mers
+into 65 536 buckets with a non-invertible avalanche hash, so predicting a masked
+bucket from its neighbours is not a representable function and the MLE-optimal
+predictor is the marginal token distribution (loss = `H(unigram) ≈ ln(vocab)`).
+Higher learning rates, fp32, and a fixed-mask memorisation run all stalled
+identically. Full diagnosis:
+`.trap/plans/mlm-pretraining-freeze-action-plan.md`.
 
-- the per-step loss is logged but nobody watches 40 epochs of it, and
-- the Optuna sweep that "tuned" the LR was **also** stuck at the uniform baseline,
-  so it optimised pure noise and returned a meaningless config.
+That is why MLM pre-training is dropped (Track A) and the original MLM smoke gate
+(`24_mlm_smoke`) is shelved in `legacy/mlm/` — note it has its own baseline bug
+(it checks `ln(vocab)` rather than the empirical `H(marginal)`, so it would have
+*passed* a unigram-collapsed run). The classification gate below remains: it
+turns "35 h wasted, discovered days later" into "fails in ~10 min".
 
-A smoke gate turns "35 h wasted, discovered days later" into "fails in ~10 min,
-stops the chain immediately".
+### What it checks
 
-### What they check
-
-Each gate trains a few hundred steps on a **1k-row `--debug` subset**, on a
+The gate trains a few hundred steps on a **1k-row `--debug` subset**, on a
 **single GPU** (so the reported loss has no DDP `×num_processes` aggregation
 artifact), then asserts the loss dropped a clear margin below the uniform-random
 baseline. If it did not, the job exits non-zero and the `afterok` dependency
@@ -103,42 +104,33 @@ baseline. If it did not, the job exits non-zero and the `afterok` dependency
 
 | Gate | Runs before | Pass condition | Default margin |
 |---|---|---|---|
-| `24_mlm_smoke` | `25_tune_mlm`, `30_mlm_pretrain` | `final_train_loss < ln(vocab) − margin` | `1.0` nats |
 | `34_classification_smoke` | `35_tune_classification`, `40_classification` | `train_loss < ln(num_labels) − margin` | `0.2` nats |
 
-`24_mlm_smoke` needs only the tokenizer (stage 10) and dataset (stage 20).
-`34_classification_smoke` fine-tunes from the MLM checkpoint, so it sits *after*
-stage 30. Both are wired into `submit_pipeline.sh` automatically — no extra flags.
+`34_classification_smoke` needs the tokenizer (stage 10) and the tokenized
+classification dataset (stage 20); under Track A the classifier trains from random
+init, so the gate has no MLM-checkpoint dependency. It is wired into
+`submit_pipeline.sh` automatically — no extra flags.
 
-### Running a gate on its own
+### Running the gate on its own
 
 ```bash
-# MLM gate (validates config/training/mlm.json end-to-end on real data)
-RUN_CONFIG=config/runs/salmon.yaml sbatch scripts/slurm/24_mlm_smoke.slurm
-
-# Classification gate (needs an MLM checkpoint from stage 30)
 RUN_CONFIG=config/runs/salmon.yaml sbatch scripts/slurm/34_classification_smoke.slurm
 ```
 
-A pass prints e.g. `[24_mlm_smoke] PASS: MLM training reduces loss below the
-uniform baseline.`; a failure prints the measured loss, the threshold, and the
-first things to check (learning rate, bf16 underflow, data/label alignment).
+A failure prints the measured loss, the threshold, and the first things to check
+(learning rate, data/label alignment, dataset row counts).
 
 ### Configs and tunables
 
-The gates run dedicated short configs so they stay fast and deterministic; the
-key hyperparameters (notably the from-scratch LR) match the real configs:
+The gate runs a dedicated short config so it stays fast and deterministic:
 
 | File | Used by | Notes |
 |---|---|---|
-| `config/training/mlm.smoke.json` | `24_mlm_smoke` | 3 epochs, `lr=5e-4` (from-scratch), no save/eval |
 | `config/training/classification.smoke.json` | `34_classification_smoke` | 3 epochs, fine-tuning LR |
 
 Override per submission via the environment:
 
 ```bash
-MLM_SMOKE_CONFIG=config/training/my.smoke.json MLM_SMOKE_MARGIN=2.0 \
-    sbatch scripts/slurm/24_mlm_smoke.slurm
 CLS_SMOKE_MARGIN=0.3 sbatch scripts/slurm/34_classification_smoke.slurm
 ```
 
@@ -238,7 +230,9 @@ Every value is still overridable from the environment without editing files:
 ANACONDA_MODULE=Anaconda3/2024.10 bash scripts/slurm/submit_pipeline.sh
 
 # Override pipeline parameters
-GPUS_PER_NODE=2 K=17 VOCAB=32000 bash scripts/slurm/submit_pipeline.sh
+# (VOCAB is a legacy SPM/BPE training arg — the Salmon tokenizer ignores it; its
+#  effective vocab is 5 + n_hash, overridden into the model from len(tokenizer).)
+GPUS_PER_NODE=2 K=17 bash scripts/slurm/submit_pipeline.sh
 TOKENIZER_NAME=my.tok MODEL_CLS=my.model sbatch scripts/slurm/40_classification.slurm
 
 # Override GPU type
@@ -265,33 +259,30 @@ reproducibility. Parallelism on Grace is a **SLURM job array sharing one study**
 through a `JournalFileBackend` on `$SCRATCH` — Optuna coordinates trial
 assignment; no Ray cluster.
 
+Under Track A only the **classification** sweep runs (MLM tuning is shelved in
+`legacy/mlm/`).
+
 ```bash
-bash scripts/slurm/submit_tuning.sh                  # MLM + classification sweeps
-bash scripts/slurm/submit_tuning.sh --classification # one sweep only
+bash scripts/slurm/submit_tuning.sh                  # classification sweep (default)
+bash scripts/slurm/submit_tuning.sh --classification # explicit; same as default
 bash scripts/slurm/submit_tuning.sh --dry-run        # print the array -> finalize chain
 #   or: python -m trap.reproduce tune --dry-run
 ```
 
-Each sweep is an array of workers (`35_tune_classification.slurm` = `--array=0-7%4`,
-`25_tune_mlm.slurm` = `--array=0-5%3`); each has its own finalize job
-(`25_tune_mlm_finalize.slurm`, `35_tune_classification_finalize.slurm`) submitted
-`afterok` the array that writes its config. Feed those into the train stages:
+The sweep is an array of workers (`35_tune_classification.slurm` = `--array=0-7%4`)
+with its own finalize job (`35_tune_classification_finalize.slurm`) submitted
+`afterok` the array that writes its config. Feed that into the train stage:
 
 ```bash
 CLS_TRAINER_CONFIG=config/training/classification_final.tuned.json \
     sbatch scripts/slurm/40_classification.slurm
-MLM_TRAINER_CONFIG=config/training/mlm.tuned.json \
-    sbatch scripts/slurm/30_mlm_pretrain.slurm
 ```
 
 Search spaces live in `config/tuning/*.yaml` (knobs: `n_trials`, `sampler`,
 `pruner`, `seed`, `max_trial_epochs`). Tuning knobs in `_common.sh`:
-`TRIALS_PER_WORKER`, `STUDY_CLS`/`STUDY_MLM`, `TUNE_DIR`, `TUNE_JOURNAL_*`.
+`TRIALS_PER_WORKER`, `STUDY_CLS`, `TUNE_DIR`, `TUNE_JOURNAL_*`.
 
 Notes:
-- **MLM trials run a short proxy schedule** (`max_trial_epochs` in the YAML), not
-  the full 40 epochs — Hyperband prunes the rest; the winning lr/wd/warmup then
-  feed the full `mlm.json`.
 - `TPESampler(seed=3469)` is fully reproducible for a single worker; across array
   workers TPE reads completed trials from the shared journal, so it is
   best-effort reproducible.

@@ -826,6 +826,20 @@ def classification(
     logger.info("Original ALBERT number of parameters: 11M")
     logger.info("Original BERT number of parameters: 110M")
 
+    # The embedding table is sized from len(tokenizer); a mismatch means token
+    # ids emitted by the tokenizer can index past the table → CUDA gather OOB.
+    # The from-pretrained branch inherits the MLM checkpoint's vocab, which must
+    # also match the tokenizer that produced the dataset.
+    n_emb = model.get_input_embeddings().num_embeddings
+    if n_emb != len(tokenizer):
+        raise ValueError(
+            f"Embedding table ({n_emb}) != len(tokenizer) ({len(tokenizer)}). "
+            "The classifier's vocab must match the tokenizer that produced the "
+            "tokenized dataset; check albert_config vocab_size / the pretrained "
+            "checkpoint."
+        )
+    logger.info(f"[vocab-check] embedding table matches tokenizer: {n_emb} == {len(tokenizer)}")
+
     assert_dataset_ids_in_range(
         lm_datasets,
         vocab_size=model.config.vocab_size,
@@ -876,7 +890,15 @@ def classification(
             os.path.join(MODELS_DIR, model_name, "final"),
             seed=getattr(trainer_args, "seed", 3469),
             k=k,
-            model={"name": model_name, "objective": "classification"},
+            model={
+                "name": model_name,
+                "objective": "classification",
+                # Effective vocab actually used (override of the albert_config
+                # default); records the real 65k salmon vocab, not the JSON label.
+                "vocab_size": int(model.config.vocab_size),
+                "tokenizer_len": len(tokenizer),
+                "pretrained_from": str(pretrained_model_path) if pretrained_model_path else None,
+            },
             throughput={"train_runtime_s": metrics.get("train_runtime")},
         )
     _elapsed = _time.perf_counter() - _t0

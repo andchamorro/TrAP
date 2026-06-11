@@ -3,19 +3,19 @@
 # `sbatch --dependency=afterok` chain. Run from anywhere:
 #
 #   bash scripts/slurm/submit_pipeline.sh                              # BPE (default)
-#   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/spm.yaml
+#   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/salmon.yaml
 #   bash scripts/slurm/submit_pipeline.sh --dry-run                   # print the chain only
 #   bash scripts/slurm/submit_pipeline.sh --from 10_tokenizer --to 40_classification
-#   bash scripts/slurm/submit_pipeline.sh --mlm-tune                  # 25_tune_mlm → finalize
 #   bash scripts/slurm/submit_pipeline.sh --cls-tune                  # 35_tune_cls → finalize
 #   bash scripts/slurm/submit_pipeline.sh --account 123456789         # override account
 #   bash scripts/slurm/submit_pipeline.sh --gres=gpu:a40:2            # override GPU type
 #   bash scripts/slurm/submit_pipeline.sh -q                          # suppress submission logs
 #
+# Track A: MLM pre-training is dropped; the classifier trains from random init.
 # Run configs (config/runs/*.yaml) set TOKENIZER_ALGORITHM, TOKENIZER_NAME,
 # processing names, and model names.  Multiple algorithms can run in parallel:
 #   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/bpe.yaml
-#   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/spm.yaml
+#   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/salmon.yaml
 #
 # mail-user, account, --gres, and --partition are read from config/hpc/grace.yaml
 # (or $HPC_CONFIG).  Any unrecognised flag is passed through to every sbatch call.
@@ -43,15 +43,17 @@ SLURM_PARTITION_GPU="${SLURM_PARTITION_GPU:-gpu}"
 SLURM_GPU_GRES="${SLURM_GPU_GRES:-}"
 
 # GPU stages that need --gres and --partition injected
-GPU_STAGES=("15_tests.slurm" "25_tune_mlm.slurm" "30_mlm_pretrain.slurm" "35_tune_classification.slurm" "40_classification.slurm" "50_benchmark.slurm")
+GPU_STAGES=("15_tests.slurm" "35_tune_classification.slurm" "40_classification.slurm" "50_benchmark.slurm")
 
+# Track A pipeline: MLM pre-training is dropped (the hashed k-mer vocab makes the
+# MLM objective unlearnable — see scripts/slurm/legacy/mlm/README.md). The
+# classifier is fine-tuned from random init. The shelved MLM stages
+# (24_mlm_smoke, 30_mlm_pretrain) live in legacy/mlm/.
 STAGES=(
     "00_fetch_references.slurm"
     "10_tokenizer.slurm"
     "20_dataset.slurm"
     "21_dataset_diagnosis.slurm"
-    "24_mlm_smoke.slurm"
-    "30_mlm_pretrain.slurm"
     "34_classification_smoke.slurm"
     "40_classification.slurm"
     "50_benchmark.slurm"
@@ -75,7 +77,11 @@ while [[ $# -gt 0 ]]; do
         -q|--quiet) QUIET=1; shift ;;
         --from) FROM="$2"; shift 2 ;;
         --to) TO="$2"; shift 2 ;;
-        --mlm-tune) MLM_TUNE=1; shift ;;
+        --mlm-tune)
+            echo "error: --mlm-tune is DEPRECATED (Track A drops MLM pre-training)." >&2
+            echo "  MLM tuning stages are shelved in scripts/slurm/legacy/mlm/." >&2
+            echo "  See scripts/slurm/legacy/mlm/README.md. Use --cls-tune instead." >&2
+            exit 1 ;;
         --cls-tune) CLS_TUNE=1; shift ;;
         --account) ACCOUNT_OVERRIDE="$2"; shift 2 ;;
         --run-config) RUN_CONFIG="$2"; shift 2 ;;
@@ -110,6 +116,15 @@ if [[ -n "${RUN_CONFIG}" ]]; then
     if [[ -n "${_rc_py}" && -f "${_rc_cfg}" && -f "${_rc_path}" ]]; then
         eval "$("${_rc_py}" "${_rc_cfg}" --run-vars "${_rc_path}" 2>/dev/null)" || true
         [[ "$QUIET" == "0" ]] && echo "[submit] run config: ${_rc_path}"
+    fi
+    # Fail at submit time (before submitting the chain) if the run config selects
+    # the deprecated SentencePiece tokenizer — _common.sh also guards at job
+    # runtime, but catching it here avoids submitting a doomed afterok chain.
+    if [[ "${TOKENIZER_ALGORITHM:-}" == "spm" || "${TOKENIZER_NAME:-}" == *.spm ]]; then
+        echo "error: SentencePiece (spm) tokenizer is DEPRECATED and disabled." >&2
+        echo "  '${_rc_path}' selects algorithm=spm / a .spm tokenizer; use config/runs/salmon.yaml." >&2
+        echo "  See scripts/slurm/legacy/mlm/README.md and trap/loaders/tokenizer.py." >&2
+        exit 1
     fi
 fi
 

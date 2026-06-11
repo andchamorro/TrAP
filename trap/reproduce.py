@@ -29,12 +29,22 @@ app = typer.Typer(help="Submit/inspect the Phase-3 training reproduction pipelin
 _SUBMIT = PROJ_ROOT / "scripts" / "slurm" / "submit_pipeline.sh"
 _SUBMIT_TUNING = PROJ_ROOT / "scripts" / "slurm" / "submit_tuning.sh"
 
+# Track A: MLM pre-training is dropped (the hashed k-mer vocab makes the MLM
+# objective unlearnable; see .trap/plans/mlm-pretraining-freeze-action-plan.md).
+# The shelved MLM stages live in scripts/slurm/legacy/mlm/.
 STAGES: List[Tuple[str, str]] = [
-    ("00_fetch_references", "Download GENCODE v48 + GRCh38.p14; build STAR/BWA indexes + L1 corpus FASTA"),
-    ("10_tokenizer", "Train SentencePiece Unigram tokenizer (k=17, vocab=32k)"),
+    (
+        "00_fetch_references",
+        "Download GENCODE v48 + GRCh38.p14; build STAR/BWA indexes + L1 corpus FASTA",
+    ),
+    ("10_tokenizer", "Build Salmon canonical k-mer tokenizer (k=17; index/hash build)"),
     ("20_dataset", "ART -> STAR -> bedtools -> transcript-level tokenized dataset"),
-    ("30_mlm_pretrain", "ALBERT masked-language-model pretraining (GPU)"),
-    ("40_classification", "Classification fine-tuning L1HS/L1PA/NEGATIVE (GPU)"),
+    ("21_dataset_diagnosis", "Row-count / token-length / split-leakage diagnostics"),
+    (
+        "34_classification_smoke",
+        "Pre-flight GATE: fine-tune a 1k-row subset, fail fast if it cannot learn (GPU)",
+    ),
+    ("40_classification", "Classification fine-tuning L1HS/L1PA/NEGATIVE from random init (GPU)"),
     ("50_benchmark", "Streaming quantify benchmark on the fixture FASTQ (GPU)"),
 ]
 
