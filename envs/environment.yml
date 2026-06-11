@@ -7,9 +7,11 @@ dependencies:
   - python=3.12.2
 
   # ---- formatting / linting ----
-  - black
-  - flake8
-  - isort
+  # Pinned so `make lint` (black/isort/flake8) is deterministic across machines;
+  # an unpinned black drifted to 26.x locally and reformatted differently than CI.
+  - black=23.12.1
+  - flake8=7.0.0
+  - isort=5.13.2
 
   # ---- CLI & utilities ----
   - pip
@@ -29,7 +31,14 @@ dependencies:
   - torchvision
 
   # ---- HuggingFace stack ----
-  - transformers
+  # Pinned to the version Grace runs. transformers 5.10+ imports
+  # torch.float8_e8m0fnu (needs torch>=2.7) and 5.x needs torch>=2.5
+  # (torch.distributed.tensor); the newest torch installable on Intel macOS is
+  # 2.4, so an unpinned transformers floats past what local torch supports.
+  # 5.9.0 imports cleanly for tokenization locally; the modeling stack still
+  # needs torch>=2.5 and so runs on Grace only (tests skip locally — see
+  # tests/conftest.py).
+  - transformers=5.9.0
   - datasets
   - tokenizers
   - sentencepiece
