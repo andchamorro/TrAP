@@ -134,12 +134,14 @@ class TestCrossProcessDeterminism:
         # A drift here would silently invalidate a tokenized dataset across the
         # many independent stage-20 worker processes.
         in_process = tokenizer.batch_encode_sequences([read])["input_ids"][0]
-        script = textwrap.dedent(f"""
+        script = textwrap.dedent(
+            f"""
             from trap.loaders.salmon_tokenizer import SalmonKmerTokenizer
             tok = SalmonKmerTokenizer(k={K}, n_hash=4096)
             ids = tok.batch_encode_sequences([{read!r}])["input_ids"][0]
             print(",".join(str(i) for i in ids))
-            """)
+            """
+        )
         # Force a different hash seed than the parent so any dict/set-ordering
         # dependence in the id mapping would surface as a mismatch.
         env = {**os.environ, "PYTHONHASHSEED": "1"}

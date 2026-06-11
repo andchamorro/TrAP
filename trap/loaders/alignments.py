@@ -51,7 +51,11 @@ class SAMDataset:
         mode = self._FORMAT_MODES.get(suffix)
         if mode is None:
             raise ValueError(f"Unsupported alignment format: {suffix!r}")
-        return pysam.AlignmentFile(str(self.file_path), mode)
+        # check_sq=False + fetch(until_eof=True) streams reads from files with no
+        # @SQ headers (e.g. unmapped-only SAM/BAM); pysam >=0.22 refuses to iterate
+        # such files otherwise. We only need query name/sequence, not references.
+        af = pysam.AlignmentFile(str(self.file_path), mode, check_sq=False)
+        return af.fetch(until_eof=True)
 
     # ------------------------------------------------------------------
     # Public interface
