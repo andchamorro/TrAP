@@ -1,11 +1,11 @@
 import json
 import os
 from pathlib import Path
+import re
 from typing import Optional, Union
 
 from accelerate.test_utils.testing import get_backend
 from datasets import load_from_disk
-import evaluate
 from loguru import logger
 import numpy as np
 from si_prefix import si_format
@@ -20,11 +20,9 @@ from transformers import (
     DataCollatorWithPadding,
     PreTrainedTokenizerFast,
 )
-from transformers import (
-    TrainingArguments,
-    default_data_collator,
-)
-from transformers import Trainer as Trainer, TrainerCallback
+from transformers import Trainer as Trainer
+from transformers import TrainerCallback, TrainingArguments, default_data_collator
+from transformers.trainer_utils import get_last_checkpoint
 import typer
 
 # from trap.modeling.albert import AlbertConfig, AlbertForMaskedLM, AlbertModel
@@ -112,48 +110,145 @@ def load_tuned_tokenizer(tokenizer_path, max_position: int) -> PreTrainedTokeniz
     return load_kmer_tokenizer(tokenizer_path, max_position)
 
 
-def make_compute_classification_metrics():
-    """Return a ``compute_metrics`` callable (accuracy + macro f1/precision/recall/roc_auc).
+def make_compute_classification_metrics(id2label: Optional[dict] = None):
+    """Return a ``compute_metrics`` callable with manuscript-grade classification scores.
 
-    F1/precision/recall are **macro**-averaged (unweighted mean over classes) so
-    the minority retroelement classes (L1HS ~0.3%, L1PA ~10% of the train split)
-    count as much as the NEGATIVE majority (~89%). Micro-F1 equals accuracy for
-    single-label multiclass, so selecting on it (``metric_for_best_model="f1"``)
-    would reward a NEGATIVE-collapsed classifier; ``accuracy`` below still reports
-    that overall/micro view. Matches the macro-F1 acceptance target (plan §7.4).
+    Reports, at each eval, aggregate scores plus a **per-class** breakdown and a
+    confusion matrix so the rare retroelement classes (L1HS ~0.3%, L1PA ~10% of
+    the train split) are not hidden inside the NEGATIVE majority (~89%).
+
+    Selection metric: ``f1`` stays **macro**-averaged (unweighted mean over
+    classes) so ``metric_for_best_model="f1"`` rewards minority-class recovery,
+    not a NEGATIVE-collapsed classifier (micro-F1 == accuracy here). Matches the
+    macro-F1 acceptance target (plan §7.4).
+
+    Aggregate keys (HF prefixes each with ``eval_`` and logs to
+    ``trainer_state.json``): ``accuracy`` (overall/micro), macro/weighted
+    ``f1``/``precision``/``recall``, ``balanced_accuracy`` (mean per-class
+    recall), ``mcc`` (Matthews correlation), ``cohen_kappa``, macro
+    one-vs-rest ``roc_auc``, and macro ``pr_auc`` (mean average precision —
+    the imbalance-robust complement to ROC-AUC for rare classes).
+
+    Per-class keys (``<metric>_<CLASS>``): precision, recall, f1, support,
+    roc_auc (OVR), pr_auc (OVR average precision). The confusion matrix is
+    logged as a formatted table via loguru and also flattened into scalar
+    ``cm_<TRUE>_as_<PRED>`` counts for programmatic downstream use.
+
+    Args:
+        id2label: Maps class id -> human-readable name for metric keys and the
+            confusion-matrix table. Defaults to numeric class indices.
     """
     from scipy.special import softmax as scipy_softmax
-    from sklearn.metrics import roc_auc_score
+    from sklearn.metrics import (
+        average_precision_score,
+        balanced_accuracy_score,
+        cohen_kappa_score,
+        confusion_matrix,
+        matthews_corrcoef,
+        precision_recall_fscore_support,
+        roc_auc_score,
+    )
 
-    accuracy = evaluate.load("accuracy")
-    f1 = evaluate.load("f1")
-    precision = evaluate.load("precision")
-    recall = evaluate.load("recall")
-    logger.info("Using accuracy, f1, precision, recall, and roc_auc as classification scores")
+    logger.info(
+        "Classification scores: accuracy, macro/weighted f1+precision+recall, "
+        "balanced_accuracy, mcc, cohen_kappa, roc_auc, pr_auc, plus per-class breakdown."
+    )
+
+    def _class_name(idx: int) -> str:
+        name = str(id2label.get(idx, idx)) if id2label else str(idx)
+        # Keep metric keys log/JSON-friendly (no spaces or path separators).
+        return re.sub(r"[^0-9A-Za-z]+", "_", name).strip("_") or str(idx)
+
+    def _ovr_auc(score_fn, labels, probs, num_classes):
+        """Per-class one-vs-rest AUC (roc/pr); NaN where a class is absent."""
+        per_class = []
+        for c in range(num_classes):
+            binary = (labels == c).astype(int)
+            if binary.min() == binary.max():  # only one class present -> undefined
+                per_class.append(float("nan"))
+            else:
+                per_class.append(float(score_fn(binary, probs[:, c])))
+        return per_class
+
+    def _log_confusion_matrix(cm, names):
+        width = max(8, *(len(n) for n in names))
+        header = "true\\pred".ljust(width) + "".join(n.rjust(width + 2) for n in names)
+        lines = ["[classification] confusion matrix (rows=true, cols=pred):", header]
+        for i, name in enumerate(names):
+            row = name.ljust(width) + "".join(f"{int(v):>{width + 2}d}" for v in cm[i])
+            lines.append(row)
+        logger.info("\n".join(lines))
 
     def compute_metrics(eval_pred):
         logits, labels = eval_pred
+        labels = np.asarray(labels)
         predictions = np.argmax(logits, axis=1)
         probs = scipy_softmax(logits, axis=1)
         num_classes = probs.shape[1]
+        names = [_class_name(c) for c in range(num_classes)]
+
+        accuracy = float((predictions == labels).mean())
+        balanced_acc = float(balanced_accuracy_score(labels, predictions))
+        mcc = float(matthews_corrcoef(labels, predictions))
+        kappa = float(cohen_kappa_score(labels, predictions))
+
+        all_labels = list(range(num_classes))
+        prec_c, rec_c, f1_c, support_c = precision_recall_fscore_support(
+            labels, predictions, labels=all_labels, average=None, zero_division=0
+        )
+        macro = precision_recall_fscore_support(
+            labels, predictions, labels=all_labels, average="macro", zero_division=0
+        )
+        weighted = precision_recall_fscore_support(
+            labels, predictions, labels=all_labels, average="weighted", zero_division=0
+        )
+
         try:
             if num_classes == 2:
-                roc_auc = roc_auc_score(labels, probs[:, 1])
+                roc_auc = float(roc_auc_score(labels, probs[:, 1]))
             else:
-                roc_auc = roc_auc_score(labels, probs, multi_class="ovr", average="macro")
+                roc_auc = float(roc_auc_score(labels, probs, multi_class="ovr", average="macro"))
         except ValueError:
             roc_auc = float("nan")
-        return {
-            "accuracy": accuracy.compute(predictions=predictions, references=labels)["accuracy"],
-            "f1": f1.compute(predictions=predictions, references=labels, average="macro")["f1"],
-            "precision": precision.compute(
-                predictions=predictions, references=labels, average="macro", zero_division=0
-            )["precision"],
-            "recall": recall.compute(predictions=predictions, references=labels, average="macro")[
-                "recall"
-            ],
+        roc_per_class = _ovr_auc(roc_auc_score, labels, probs, num_classes)
+        pr_per_class = _ovr_auc(average_precision_score, labels, probs, num_classes)
+        pr_auc_macro = float(np.nanmean(pr_per_class)) if num_classes > 0 else float("nan")
+
+        cm = confusion_matrix(labels, predictions, labels=all_labels)
+        _log_confusion_matrix(cm, names)
+        per_class_rows = "\n".join(
+            f"  {names[c]:<10s} precision={prec_c[c]:.4f} recall={rec_c[c]:.4f} "
+            f"f1={f1_c[c]:.4f} roc_auc={roc_per_class[c]:.4f} pr_auc={pr_per_class[c]:.4f} "
+            f"support={int(support_c[c])}"
+            for c in range(num_classes)
+        )
+        logger.info(f"[classification] per-class metrics:\n{per_class_rows}")
+
+        metrics = {
+            "accuracy": accuracy,
+            "f1": float(macro[2]),
+            "precision": float(macro[0]),
+            "recall": float(macro[1]),
+            "f1_weighted": float(weighted[2]),
+            "precision_weighted": float(weighted[0]),
+            "recall_weighted": float(weighted[1]),
+            "balanced_accuracy": balanced_acc,
+            "mcc": mcc,
+            "cohen_kappa": kappa,
             "roc_auc": roc_auc,
+            "pr_auc": pr_auc_macro,
         }
+        for c in range(num_classes):
+            name = names[c]
+            metrics[f"precision_{name}"] = float(prec_c[c])
+            metrics[f"recall_{name}"] = float(rec_c[c])
+            metrics[f"f1_{name}"] = float(f1_c[c])
+            metrics[f"roc_auc_{name}"] = roc_per_class[c]
+            metrics[f"pr_auc_{name}"] = pr_per_class[c]
+            metrics[f"support_{name}"] = int(support_c[c])
+            for p in range(num_classes):
+                metrics[f"cm_{name}_as_{names[p]}"] = int(cm[c, p])
+        return metrics
 
     return compute_metrics
 
@@ -457,7 +552,9 @@ class MaskingTrainer(Trainer):
         eval_dataset = (
             self.eval_dataset[eval_dataset]
             if isinstance(eval_dataset, str)
-            else eval_dataset if eval_dataset is not None else self.eval_dataset
+            else eval_dataset
+            if eval_dataset is not None
+            else self.eval_dataset
         )
 
         dataloader_params = {
@@ -568,7 +665,11 @@ class DistillationTrainer(Trainer):
         super().__init__(model=student_model, *args, **kwargs)
         self.teacher = teacher_model
         self.loss_function = nn.KLDivLoss(reduction="batchmean")
-        device, _, _ = (
+        (
+            device,
+            _,
+            _,
+        ) = (
             get_backend()
         )  # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
         self.teacher.to(device)
@@ -596,7 +697,9 @@ class DistillationTrainer(Trainer):
         soft_student = F.log_softmax(student_output.logits / self.temperature, dim=-1)
 
         # Compute the loss
-        distillation_loss = self.loss_function(soft_student, soft_teacher) * (self.temperature**2)
+        distillation_loss = self.loss_function(soft_student, soft_teacher) * (
+            self.temperature**2
+        )
 
         # Compute the true label loss
         student_target_loss = student_output.loss
@@ -929,7 +1032,7 @@ def classification(
     logger.log("STAGE", f"[train:classification] device={device}")
     logger.info(f"'Training in device {device}'")
 
-    compute_metrics = make_compute_classification_metrics()
+    compute_metrics = make_compute_classification_metrics(id2label=id2label)
 
     # Class-weighted loss to counter the NEGATIVE-dominated split (plan §6/§7.4).
     # WeightedLossTrainer with class_weights=None is the unweighted default.
@@ -956,7 +1059,17 @@ def classification(
         class_weights=class_weights,
     )
     logger.log("STAGE", "[train:classification] training started")
-    train_result = trainer.train()
+    # Resume from the latest epoch checkpoint if the job was preempted/timed out
+    # (save_strategy="epoch" leaves checkpoint-* dirs in output_dir). None on a
+    # fresh run, so this is a no-op there.
+    last_checkpoint = (
+        get_last_checkpoint(trainer_args.output_dir)
+        if os.path.isdir(trainer_args.output_dir)
+        else None
+    )
+    if last_checkpoint is not None:
+        logger.info(f"[train:classification] resuming from checkpoint {last_checkpoint}")
+    train_result = trainer.train(resume_from_checkpoint=last_checkpoint)
     logger.success("Modeling training complete.")
     metrics = train_result.metrics
     metrics["train_samples"] = len(lm_datasets["train"])
