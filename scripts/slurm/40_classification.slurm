@@ -1,10 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=trap_40_classification
-#SBATCH --time=24:00:00
+# 48h: 12-epoch from-scratch run; job 18814270 timed out at 24h by ~epoch 3.
+# 64G: Grace seff peak was 42.25 GB (was 128 GB). See config/runs/default.yaml §40.
+#SBATCH --time=48:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=128G
+#SBATCH --mem=64G
 #SBATCH --gres=gpu:a100:2
 #SBATCH --partition=gpu
 # submit_pipeline.sh overrides --gres/--partition via CLI flags (CLI beats #SBATCH).

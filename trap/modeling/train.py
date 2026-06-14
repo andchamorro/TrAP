@@ -18,6 +18,7 @@ from transformers import (
     AlbertForMaskedLM,
     AlbertForSequenceClassification,
     DataCollatorWithPadding,
+    EarlyStoppingCallback,
     PreTrainedTokenizerFast,
 )
 from transformers import Trainer as Trainer
@@ -1021,6 +1022,9 @@ def classification(
     # class_weighting is a TrAP-only key, not a TrainingArguments field; pop it
     # before constructing TrainingArguments (which rejects unknown kwargs).
     class_weighting = _trainer_cfg.pop("class_weighting", None)
+    # early_stopping_patience is a TrAP-only key (EarlyStoppingCallback ctor arg,
+    # not a TrainingArguments field); pop it before TrainingArguments construction.
+    early_stopping_patience = _trainer_cfg.pop("early_stopping_patience", None)
     set_global_seed(_trainer_cfg.get("seed", 3469))
     trainer_args = TrainingArguments(**_trainer_cfg)
     trainer_args.output_dir = os.path.join(MODELS_DIR, model_name)
@@ -1047,6 +1051,20 @@ def classification(
             + ", ".join(f"{id2label[i]}={w:.3g}" for i, w in enumerate(class_weights)),
         )
 
+    # Early stopping on the macro-F1 selection metric (load_best_model_at_end must
+    # be set). Stops once eval macro-F1 stalls for `patience` evals, so a generous
+    # num_train_epochs ceiling converges without wasting wall time past the optimum.
+    callbacks = []
+    if early_stopping_patience:
+        callbacks.append(
+            EarlyStoppingCallback(early_stopping_patience=int(early_stopping_patience))
+        )
+        logger.log(
+            "STAGE",
+            f"[train:classification] early_stopping_patience={early_stopping_patience} "
+            f"on metric_for_best_model={trainer_args.metric_for_best_model!r}",
+        )
+
     try_mkdir(trainer_args.output_dir)
     trainer = WeightedLossTrainer(
         model=model,
@@ -1057,6 +1075,7 @@ def classification(
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         class_weights=class_weights,
+        callbacks=callbacks or None,
     )
     logger.log("STAGE", "[train:classification] training started")
     # Resume from the latest epoch checkpoint if the job was preempted/timed out
