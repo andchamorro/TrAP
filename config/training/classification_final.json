@@ -1,7 +1,9 @@
 {
     "seed": 3469,
     "class_weighting": "balanced",
-    "num_train_epochs": 5,
+    "num_train_epochs": 12,
+    "early_stopping_patience": 2,
+    "max_grad_norm": 5.0,
     "eval_strategy": "epoch",
     "save_strategy": "epoch",
     "save_total_limit": 5,

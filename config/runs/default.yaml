@@ -61,9 +61,16 @@ resources:
     cpus: 16
     mem: 128G
   40:
-    time: "24:00:00"
+    # 12-epoch from-scratch classification + per-epoch eval. Sized from Grace
+    # seff: job 18814270 TIMED OUT at 24h having reached only ~epoch 3 (batch 8),
+    # so 24h is insufficient for a full run -> 48h (gpu partition allows it; cf.
+    # stage 30). Peak mem 42.25 GB (18814270) / 39.40 GB (18824275, batch 16) of
+    # 128 GB -> 64 GB (~1.5x headroom; HF dataset is memory-mapped Arrow, RAM does
+    # not scale with the 4.8M rows). Early stopping (patience 2) chains via
+    # auto-resume if 48h is not enough.
+    time: "48:00:00"
     cpus: 16
-    mem: 128G
+    mem: 64G
   50:
     time: "04:00:00"
     cpus: 16
