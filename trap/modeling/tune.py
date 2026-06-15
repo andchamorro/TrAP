@@ -41,12 +41,7 @@ from optuna.pruners import HyperbandPruner, MedianPruner, NopPruner
 from optuna.samplers import RandomSampler, TPESampler
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend
-from transformers import (
-    AlbertConfig,
-    DataCollatorWithPadding,
-    Trainer,
-    TrainingArguments,
-)
+from transformers import AlbertConfig, DataCollatorWithPadding, TrainingArguments
 import typer
 
 from trap.config import manifest as manifest_mod
@@ -177,6 +172,14 @@ def _trial_training_args(search: TuneSearchSchema, model_name: str) -> TrainingA
     )
     if search.max_trial_epochs is not None:
         cfg["num_train_epochs"] = search.max_trial_epochs
+    # class_weighting / early_stopping_patience are TrAP-only keys (applied via
+    # WeightedLossTrainer / EarlyStoppingCallback in train.py), not
+    # TrainingArguments fields — pop them so construction does not raise. The
+    # classification command re-reads class_weighting from the base config to
+    # build the weighted trainer; patience is intentionally unused during search
+    # (hyperband prunes trials, and load_best_model_at_end is off here).
+    cfg.pop("class_weighting", None)
+    cfg.pop("early_stopping_patience", None)
     set_global_seed(cfg.get("seed", search.seed))
     return TrainingArguments(**train_mod._resolve_precision(cfg))
 
@@ -337,7 +340,24 @@ def classification(
         lm_datasets, vocab_size=model_vocab, num_labels=num_labels, dataset_name=preprocessing_name
     )
 
-    trainer = Trainer(
+    # Mirror stage 40 (train.py): class-weighted loss so trials are not all
+    # dominated by NEGATIVE (~90%) and collapsed to a useless macro-F1 ~0.31.
+    # Weights are a property of the data (constant across trials); compute them
+    # once from the subsampled train split.
+    class_weighting = train_mod._read_config_dict(_resolve_repo(search.base_trainer_config)).get(
+        "class_weighting"
+    )
+    class_weights = None
+    if class_weighting:
+        class_weights = train_mod.compute_class_weights(
+            lm_datasets["train"]["label"], num_labels, scheme=class_weighting
+        )
+        logger.info(
+            f"[tune:classification] class_weighting={class_weighting!r} weights="
+            + ", ".join(f"{id2label[i]}={w:.3g}" for i, w in enumerate(class_weights))
+        )
+
+    trainer = train_mod.WeightedLossTrainer(
         model_init=train_mod.make_classification_model_init(
             pretrained_model_path,
             albert_config_path,
@@ -351,7 +371,8 @@ def classification(
         eval_dataset=lm_datasets["test"],
         processing_class=tokenizer,
         data_collator=DataCollatorWithPadding(tokenizer),
-        compute_metrics=train_mod.make_compute_classification_metrics(),
+        compute_metrics=train_mod.make_compute_classification_metrics(id2label=id2label),
+        class_weights=class_weights,
     )
     _run_search(trainer, search, study_name, storage, n_trials, model_name)
 
