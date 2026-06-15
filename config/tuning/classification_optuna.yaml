@@ -1,9 +1,10 @@
 # Optuna hyperparameter search — classification fine-tuning (L1HS/L1PA/NEGATIVE).
 #
 # Consumed by `python -m trap.modeling.tune classification` (and the
-# scripts/slurm/tune_classification.slurm job array). Supersedes the retired
-# Ray-Tune `config/training/pbt_search_space.yaml` for the clean k17/v48 re-do;
-# the search space mirrors it so the result is comparable to the original sweep.
+# scripts/slurm/35_tune_classification.slurm job array). Supersedes the retired
+# Ray-Tune `config/training/pbt_search_space.yaml` for the clean k17/v48 re-do.
+# The LR ceiling and epoch range were retightened from observed collapses (see
+# learning_rate / num_train_epochs comments below) rather than mirroring it.
 #
 # `finalize` merges the winning trial over `base_trainer_config` and writes
 # config/training/classification_final.tuned.json (fed to stage 40).
@@ -17,10 +18,14 @@ seed: 3469
 base_trainer_config: config/training/classification_final.json
 
 search_space:
+  # Ceiling capped at 5e-5: the k17/v48 3-class runs collapse to all-NEGATIVE
+  # when LR stays >~7e-5 across a multi-epoch schedule (jobs 18828403/18833824
+  # both died at the LR peak of the inherited 8.64e-5). 1e-3 wasted the budget
+  # in that dead zone. 1e-5..5e-5 is the viable band for this regime.
   learning_rate:
     sampler: loguniform
     low: 1.0e-5
-    high: 1.0e-3
+    high: 5.0e-5
   weight_decay:
     sampler: uniform
     low: 0.0
@@ -31,9 +36,11 @@ search_space:
   per_device_train_batch_size:
     sampler: choice
     values: [8, 16, 32]
+  # 5 epochs was undertrained (orig run still climbing at macro-F1 0.664); with
+  # LR now capped below the collapse zone, longer schedules are safe to search.
   num_train_epochs:
     sampler: choice
-    values: [3, 5, 8]
+    values: [5, 8, 12]
 
 fixed:
   bf16: true

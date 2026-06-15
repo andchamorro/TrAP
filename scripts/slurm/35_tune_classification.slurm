@@ -41,13 +41,15 @@ _SUB_ARGS=()
 [[ -n "${SUBSAMPLE_FRAC:-}" ]] && _SUB_ARGS+=(--subsample-frac "${SUBSAMPLE_FRAC}")
 [[ -n "${SUBSAMPLE_N:-}" ]] && _SUB_ARGS+=(--subsample-n "${SUBSAMPLE_N}")
 
+# Track A: no --pretrained-model-path, so tune.py builds a RANDOM-INIT classifier
+# from ALBERT_CONFIG — matching 40_classification.slurm. (MLM init is dropped; the
+# old MODEL_MLM was the deprecated 32k regime, so tuning it would not transfer.)
 accelerate launch $(accelerate_args_single) "${REPO_ROOT}/trap/modeling/tune.py" classification \
     "${MODEL_CLS}" \
     --search-config "${CLS_SEARCH_CONFIG}" \
     --study-name "${STUDY_CLS}" \
     --storage "${TUNE_JOURNAL_CLS}" \
     --n-trials "${TRIALS_PER_WORKER}" \
-    --pretrained-model-path "${MODEL_MLM}" \
     --pretrained-tokenizer-path "${TOKENIZER_PATH}" \
     --albert-config-path "${ALBERT_CONFIG}" \
     --preprocessing-name "${PROCESSING_NAME}" \
