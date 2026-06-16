@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=trap_35_tune_cls
-#SBATCH --time=08:00:00
+#SBATCH --time=20:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16

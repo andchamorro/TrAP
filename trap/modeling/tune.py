@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from collections import Counter
 import json
+import os
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -88,6 +89,20 @@ def _build_hp_space(space: dict[str, HPSpec]) -> Callable:
         return params
 
     return hp_space
+
+
+def _worker_sampler_seed(base_seed: int) -> int:
+    """Per-array-worker sampler seed = ``base_seed + SLURM_ARRAY_TASK_ID``.
+
+    All array workers share one journal/study, but each must EXPLORE different
+    points. A shared sampler seed makes every TPESampler replay the identical
+    random startup sequence, so 8 workers sample the SAME params and the trial
+    budget collapses onto ~1 config (job 18842014: 16 trials → 2 distinct
+    configs). Offsetting by the array task id decorrelates the workers. The
+    DATA subsample seed stays ``base_seed`` (unchanged) so every trial sees the
+    same fixed subset; only the search trajectory is per-worker.
+    """
+    return base_seed + int(os.environ.get("SLURM_ARRAY_TASK_ID", "0"))
 
 
 def _make_sampler(name: str, seed: int):
@@ -464,7 +479,11 @@ def _run_search(trainer, search, study_name, storage, n_trials, model_name) -> N
         n_trials=n,
         direction=search.direction,
         backend="optuna",
-        **_study_kwargs(study_name, storage, search.sampler, search.pruner, search.seed),
+        # Per-worker sampler seed so parallel array workers explore DIFFERENT
+        # points on the shared study (see _worker_sampler_seed).
+        **_study_kwargs(
+            study_name, storage, search.sampler, search.pruner, _worker_sampler_seed(search.seed)
+        ),
     )
     # Non-main ranks return None under DDP; only rank 0 reports/writes.
     if best is None or not trainer.is_world_process_zero():
