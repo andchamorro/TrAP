@@ -79,15 +79,16 @@ _load_run_config() {
         return
     }
     eval "${vars}"
-    # SentencePiece is deprecated: its metaspace/Whitespace pre-tokenizer mismatch
-    # fragments each k-mer into ~16 char-level pieces, silently destroying the
-    # tokenization. Use the Salmon canonical k-mer tokenizer (config/runs/salmon.yaml).
-    if [[ "${TOKENIZER_ALGORITHM:-}" == "spm" || "${TOKENIZER_NAME:-}" == *.spm ]]; then
-        echo "[_common] ERROR: SentencePiece (spm) tokenizer is DEPRECATED and disabled." >&2
+    # SentencePiece was disabled because a metaspace/Whitespace mismatch
+    # fragmented each k-mer into ~16 char-level pieces. The wiring is fixed on the
+    # SPM-exploration branch (Metaspace pre-tokenizer + decoder); the path is
+    # re-opened only under TRAP_SPM_EXPERIMENTAL=1. Otherwise Salmon is the default.
+    if [[ "${TOKENIZER_ALGORITHM:-}" == "spm" || "${TOKENIZER_NAME:-}" == *.spm ]] \
+        && [[ "${TRAP_SPM_EXPERIMENTAL:-}" != "1" ]]; then
+        echo "[_common] ERROR: SentencePiece (spm) tokenizer is DEPRECATED and disabled by default." >&2
         echo "  Run config '${run_cfg}' selects algorithm=spm / a .spm tokenizer." >&2
-        echo "  Reason: metaspace pre-tokenizer mismatch fragments k-mers (~16 char" >&2
-        echo "          pieces each), silently corrupting the tokenized dataset." >&2
-        echo "  Fix: use config/runs/salmon.yaml (canonical k-mer tokenizer)." >&2
+        echo "  The metaspace mismatch is fixed on the SPM-exploration branch." >&2
+        echo "  Fix: set TRAP_SPM_EXPERIMENTAL=1 to opt in, or use config/runs/salmon.yaml." >&2
         exit 1
     fi
     echo "[_common] run config loaded: ${run_cfg}"

@@ -120,10 +120,13 @@ if [[ -n "${RUN_CONFIG}" ]]; then
     # Fail at submit time (before submitting the chain) if the run config selects
     # the deprecated SentencePiece tokenizer — _common.sh also guards at job
     # runtime, but catching it here avoids submitting a doomed afterok chain.
-    if [[ "${TOKENIZER_ALGORITHM:-}" == "spm" || "${TOKENIZER_NAME:-}" == *.spm ]]; then
-        echo "error: SentencePiece (spm) tokenizer is DEPRECATED and disabled." >&2
-        echo "  '${_rc_path}' selects algorithm=spm / a .spm tokenizer; use config/runs/salmon.yaml." >&2
-        echo "  See scripts/slurm/legacy/mlm/README.md and trap/loaders/tokenizer.py." >&2
+    # The metaspace mismatch is fixed on the SPM-exploration branch; opt in with
+    # TRAP_SPM_EXPERIMENTAL=1.
+    if [[ "${TOKENIZER_ALGORITHM:-}" == "spm" || "${TOKENIZER_NAME:-}" == *.spm ]] \
+        && [[ "${TRAP_SPM_EXPERIMENTAL:-}" != "1" ]]; then
+        echo "error: SentencePiece (spm) tokenizer is DEPRECATED and disabled by default." >&2
+        echo "  '${_rc_path}' selects algorithm=spm / a .spm tokenizer." >&2
+        echo "  Set TRAP_SPM_EXPERIMENTAL=1 to opt in, or use config/runs/salmon.yaml." >&2
         exit 1
     fi
 fi
