@@ -133,7 +133,7 @@ class TuneSearchSchema(BaseModel):
 class TokenizerConfigSchema(BaseModel):
     """SentencePiece / WordPiece tokenizer training configuration."""
 
-    algorithm: Literal["unigram", "wordpiece"] = "unigram"
+    algorithm: Literal["unigram", "wordpiece", "bpe", "spm"] = "unigram"
     k: int = 17
     vocab_size: int = 32000
     batch_size: int = 1024
