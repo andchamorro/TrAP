@@ -1,27 +1,49 @@
-# Google SentencePiece Unigram pipeline — multi-threaded, highest-quality vocab.
-# Set num_threads to match the node's SLURM cpus-per-task allocation.
-# Artifacts are namespaced with a .spm suffix.
+# Google SentencePiece Unigram pipeline — metaspace-fixed subword k-mer vocab.
+#
+# Re-opened on the explore/spm-metaspace-tokenizer branch: the metaspace
+# pre-tokenizer mismatch that fragmented k-mers is fixed (Metaspace pre-tokenizer
+# + decoder in train_google_sentencepiece). The path is gated, so every stage
+# that touches it must run with TRAP_SPM_EXPERIMENTAL=1 (the .spm name also trips
+# the guard otherwise).
+#
+# vocab is set to 65541 to match the Salmon effective vocab (5 specials + 65536),
+# so the ALBERT geometry and the runtime vocab_size=len(tokenizer) override drop
+# in unchanged. SPM counts specials inside vocab_size; the post-build re-pinning
+# of the 5 specials nets a vocab within ~2 of this — train.py uses len(tokenizer).
+#
+# Subword caveat: SPM splits k-mers into sub-pieces, so a read is NOT a fixed
+# token count. Run the fragmentation gate before committing to a full run:
+#   TRAP_SPM_EXPERIMENTAL=1 python -m trap.loaders.tokenizer spm-fragmentation \
+#       --tokenizer-path models/tokenizer.gencode.v48.k17.spm \
+#       --builder <R1.fq> --pair <R2.fq> --k 17
+# p99 tokens/pair must clear max_position_embeddings (1280). The Salmon baseline
+# is 271 tokens/pair for a 2x150 bp pair; if SPM blows past 1280, use spm_k8.yaml
+# or raise max_position_embeddings.
 #
 # Usage:
-#   bash scripts/slurm/submit_pipeline.sh --run-config config/runs/spm.yaml
+#   TRAP_SPM_EXPERIMENTAL=1 bash scripts/slurm/submit_pipeline.sh \
+#       --run-config config/runs/spm.yaml
 
 extends: default
 
+k: 17
+vocab: 65541
+
 tokenizer:
   algorithm: spm
-  name: tokenizer.gencode.v48.k17.32k.spm
+  name: tokenizer.gencode.v48.k17.spm
   num_threads: 48          # matches --cpus-per-task in 10_tokenizer.slurm
   max_training_chars: 4000000000   # 4B post-k-mer chars (~75% of 256 GB @ 40x ratio)
 
-mlm_processing_name: gencode.v48.k17.32k.spm
-processing_name: gencode.v48.k17.32k.spm/l1hs_l1pa2
-model_mlm: albert.gencode.v48.k17.32k.spm
-model_cls: albert.l1hs_l1pa2.v48.k17.32k.spm
+mlm_processing_name: gencode.v48.k17.spm
+processing_name: gencode.v48.k17.spm/l1hs_l1pa2
+model_mlm: albert.gencode.v48.k17.spm
+model_cls: albert.l1hs_l1pa2.v48.k17.spm
 
 # SPM Unigram: multi-threaded EM.  max_training_chars caps the post-k-mer
 # corpus fed to SPM; memory scales ~40x the corpus size.
-#   500M chars  →  ~20 GB   (original, 15% of 128 GB)
-#   4B   chars  →  ~160 GB  (target, ~62% of 256 GB)
+#   500M chars  →  ~20 GB   (15% of 128 GB)
+#   4B   chars  →  ~160 GB  (~62% of 256 GB)
 # Grace nodes have 384 GB; requesting 256 G leaves headroom.
 # Time scales with corpus size; 8h is sufficient for 4B chars at 48 threads.
 resources:
