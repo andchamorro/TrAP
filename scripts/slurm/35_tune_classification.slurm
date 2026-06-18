@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=trap_35_tune_cls
-#SBATCH --time=20:00:00
+#SBATCH --time=48:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=128G
+#SBATCH --mem=64G
 #SBATCH --gres=gpu:a100:1
 #SBATCH --partition=gpu
 # submit_pipeline.sh overrides --gres/--partition via CLI flags (CLI beats #SBATCH).
@@ -22,6 +22,12 @@
 # TRIALS_PER_WORKER trials; %4 caps concurrency. Run the afterok `tune_finalize`
 # to write config/training/classification_final.tuned.json. submit_tuning.sh
 # requests 1 GPU per task; override GPU via --gres=gpu:a40:1.
+#
+# Wall time 48h (gpu-partition max): at SUBSAMPLE_FRAC=0.4 a full 8-epoch trial
+# is ~4x the 10% run (job 18853148: longest worker 15:43h at 10% -> ~63h at 40%),
+# so at 40% submit with TRIALS_PER_WORKER=1 (8 workers -> 8 trials, ~34h each,
+# fits 48h). The journal is persistent: resubmit the SAME array to ADD 8 more
+# TPE-informed trials to the study. mem 64G: 10% peak was 24.4 GB (seff 18853148).
 
 source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"
 load_gpu_modules
