@@ -22,8 +22,10 @@ import numpy as np
 import pytest
 
 from trap.loaders.tokenizer import (
+    _SPM_MARKER,
     _SPM_SPECIALS,
     load_kmer_tokenizer,
+    spm_input_mode,
     train_google_sentencepiece,
 )
 from trap.utils.kmer import kmer_split
@@ -113,6 +115,58 @@ class TestRoundTrip:
         first = tokenizer(text)["input_ids"]
         second = load_kmer_tokenizer(spm_dir)(text)["input_ids"]
         assert first == second
+
+
+@pytest.fixture(scope="module")
+def raw_dir(tmp_path_factory, reads):
+    """Train a raw-read SPM tokenizer (no k-mer pre-split) on the same reads."""
+    out = tmp_path_factory.mktemp("spmraw")
+    train_google_sentencepiece(
+        reads,
+        out=str(out),
+        name="raw",
+        vocab_size=500,
+        k=K,
+        fast=True,
+        num_threads=2,
+        raw_read=True,
+    )
+    return str(out / "raw")
+
+
+@pytest.mark.integration
+class TestRawRead:
+    @pytest.fixture(autouse=True)
+    def _optin(self, monkeypatch):
+        monkeypatch.setenv("TRAP_SPM_EXPERIMENTAL", "1")
+
+    def test_marker_and_mode(self, raw_dir):
+        import os
+
+        assert os.path.exists(os.path.join(raw_dir, _SPM_MARKER))
+        tok = load_kmer_tokenizer(raw_dir)
+        assert spm_input_mode(tok) == (True, K)
+
+    def test_raw_uses_far_fewer_tokens_than_kmer(self, raw_dir, spm_dir, reads):
+        # The whole point: raw-read tokenizes a read to far fewer tokens than the
+        # overlapping-k-mer path, which is what keeps pairs inside the budget.
+        raw = load_kmer_tokenizer(raw_dir)
+        kmer = load_kmer_tokenizer(spm_dir)
+        read = reads[0]
+        n_raw = len(raw(read, add_special_tokens=False)["input_ids"])
+        n_kmer = len(kmer(kmer_split(K, read), add_special_tokens=False)["input_ids"])
+        assert n_raw < n_kmer
+        assert n_raw <= len(read)  # structural bound: char-level is the worst case
+
+    def test_raw_decode_round_trips(self, raw_dir, reads):
+        tok = load_kmer_tokenizer(raw_dir)
+        for r in reads[:30]:
+            ids = tok(r, add_special_tokens=False)["input_ids"]
+            assert tok.decode(ids).replace(" ", "") == r
+
+    def test_raw_specials_pinned(self, raw_dir):
+        tok = load_kmer_tokenizer(raw_dir)
+        assert (tok.cls_token_id, tok.pad_token_id, tok.sep_token_id) == (0, 1, 2)
 
 
 @pytest.mark.integration
