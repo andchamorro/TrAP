@@ -1037,8 +1037,10 @@ def train(
     fast: bool = typer.Option(True, help="Wrap as a HuggingFace PreTrainedTokenizerFast"),
     max_training_chars: int = typer.Option(
         DEFAULT_MAX_TRAINING_CHARS,
-        help="Cap on post-k-mer corpus chars (Unigram/HF only); keeps the esaxx "
-        "suffix array under its i32 limit. Sequences are subsampled (seeded) to fit.",
+        help="Cap on post-k-mer corpus chars (Unigram/HF/SPM); keeps the esaxx "
+        "suffix array under its i32 limit and bounds SPM RSS. Sequences are "
+        "subsampled (seeded) to fit.",
+        envvar="TOKENIZER_MAX_TRAINING_CHARS",
     ),
     num_threads: int = typer.Option(
         16,
@@ -1062,17 +1064,25 @@ def train(
         "conserved L1 k-mers to force into the vocab as atomic tokens, so the "
         "entropy-justified ≥16 bp k-mers stay whole (Salmon target index as SPM "
         "pieces). Mutually informative with --raw-read.",
+        envvar="TOKENIZER_PIN_KMERS",
     ),
     pin_from_extra: bool = typer.Option(
         False,
         "--pin-from-extra",
         help="spm only: derive the pinned k-mers from --extra-corpus sequences "
         "(top --pin-max by frequency) instead of a --pin-kmers dump.",
+        envvar="TOKENIZER_PIN_FROM_EXTRA",
     ),
-    pin_k: Optional[int] = typer.Option(None, help="Length of pinned k-mers (defaults to --k)."),
-    pin_min_count: int = typer.Option(1, help="Drop pinned k-mers below this count."),
+    pin_k: Optional[int] = typer.Option(
+        None, help="Length of pinned k-mers (defaults to --k).", envvar="TOKENIZER_PIN_K"
+    ),
+    pin_min_count: int = typer.Option(
+        1, help="Drop pinned k-mers below this count.", envvar="TOKENIZER_PIN_MIN_COUNT"
+    ),
     pin_max: int = typer.Option(
-        8192, help="Keep at most this many (most frequent) pinned k-mers."
+        8192,
+        help="Keep at most this many (most frequent) pinned k-mers.",
+        envvar="TOKENIZER_PIN_MAX",
     ),
     debug: bool = typer.Option(
         False,
