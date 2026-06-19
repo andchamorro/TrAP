@@ -230,6 +230,7 @@ def _get_run_shell_vars(cfg):
         ("k", "K"),
         ("vocab", "VOCAB"),
         ("max_position", "MAX_POSITION"),
+        ("max_position_cls", "MAX_POSITION_CLS"),
         ("seed", "SEED"),
     ):
         if yaml_key in cfg:

@@ -28,6 +28,11 @@ extends: default
 
 k: 17
 vocab: 65541
+# Raw-read SPM pairs are ~63 tokens (p99 77, max 90 on the 5x reads), so cap the
+# classification padding at 128 instead of Salmon's 280 (and the 1280 position
+# table) — pads/truncates the tokenised dataset only; the model still supports
+# 1280 positions. Avoids wasting ~90% of every example on padding.
+max_position_cls: 128
 
 tokenizer:
   algorithm: spm
