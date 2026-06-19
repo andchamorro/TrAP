@@ -297,6 +297,12 @@ export TUNE_JOURNAL_MLM="${TUNE_JOURNAL_MLM:-${TUNE_DIR}/${STUDY_MLM}.journal}"
 export TRIALS_PER_WORKER="${TRIALS_PER_WORKER:-2}"
 export CLS_SEARCH_CONFIG="${CLS_SEARCH_CONFIG:-${REPO_ROOT}/config/tuning/classification_optuna.yaml}"
 export MLM_SEARCH_CONFIG="${MLM_SEARCH_CONFIG:-${REPO_ROOT}/config/tuning/mlm_optuna.yaml}"
+# Per-run tuned-config output, namespaced like STUDY_CLS so an SPM sweep does NOT
+# overwrite the Salmon tuned config (the finalize default <base>.tuned.json is a
+# single shared path). Feed this into stage 40 via CLS_TRAINER_CONFIG.
+#   salmon -> classification_final.gencode.v48.k17.salmon.tuned.json
+#   spm    -> classification_final.gencode.v48.k17.spm.tuned.json
+export CLS_TUNED_OUT="${CLS_TUNED_OUT:-${REPO_ROOT}/config/training/classification_final.${MLM_PROCESSING_NAME//\//_}.tuned.json}"
 
 # --- GPU / accelerate ------------------------------------------------------
 # Emits a DDP launch for GPUS_PER_NODE>=2, or a single-process launch for
