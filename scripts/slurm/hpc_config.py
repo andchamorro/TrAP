@@ -322,7 +322,9 @@ def main(argv=None):
             return 1
         for key, val in _get_shell_vars(cfg).items():
             if key not in os.environ and val:
-                print("{0}={1}".format(key, shlex.quote(val)))
+                # export so values reach subprocess environments (e.g. typer
+                # envvar= bindings in the python CLIs), not just the shell.
+                print("export {0}={1}".format(key, shlex.quote(val)))
         return 0
 
     if args.run_vars:
@@ -342,7 +344,10 @@ def main(argv=None):
             return 1
         for key, val in _get_run_shell_vars(cfg).items():
             if key not in os.environ and val:
-                print("{0}={1}".format(key, shlex.quote(val)))
+                # export so run-config values (TOKENIZER_NUM_THREADS,
+                # TOKENIZER_MAX_TRAINING_CHARS, …) reach the python CLIs'
+                # envvar= bindings, not just the sourcing shell.
+                print("export {0}={1}".format(key, shlex.quote(val)))
         return 0
 
     if args.check_cmds:
