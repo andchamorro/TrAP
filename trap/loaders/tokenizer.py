@@ -519,7 +519,8 @@ def train_google_sentencepiece(
     max_training_chars=DEFAULT_MAX_TRAINING_CHARS,
     n_pinned=0,
     raw_read=False,
-    raw_max_piece_length=16,
+    raw_max_piece_length=32,
+    pin_kmers=None,
 ):
     """Train a Unigram tokenizer via the Google SentencePiece C++ library.
 
@@ -560,7 +561,14 @@ def train_google_sentencepiece(
             at char-level) than the ~134 overlapping k-mers of the default path,
             which is what keeps paired reads inside ``max_position_embeddings``.
         raw_max_piece_length: ``max_sentencepiece_length`` for ``raw_read`` mode
-            (the default path uses ``k + 1``). Longer pieces compress better.
+            (the default path uses ``k + 1``). Longer pieces compress better and
+            let conserved motifs survive at the ≥16 bp length the k-mer entropy
+            argument calls for (k ≳ log4(genome) ≈ 16 for per-token uniqueness).
+        pin_kmers: Optional list of k-mer strings forced into the vocab as SPM
+            ``user_defined_symbols`` (atomic, never split). Seed these with the
+            conserved L1 k-mers that feed the Salmon target index so the
+            entropy-justified ≥16 bp k-mers become guaranteed single tokens,
+            with subword fallback for everything else.
     """
     import sentencepiece as spm
 
@@ -598,6 +606,28 @@ def train_google_sentencepiece(
         16,
     )
     max_piece_length = raw_max_piece_length if raw_read else k + 1
+
+    # Force conserved k-mers into the vocab as atomic user-defined symbols so the
+    # entropy-justified ≥16 bp k-mers become guaranteed single tokens (the Salmon
+    # target index, expressed as SPM pieces). Deduped; capped with a warning so a
+    # runaway pin list cannot crowd out the learned subword vocab.
+    user_symbols = ["[CLS]", "[SEP]", "[MASK]"]
+    if pin_kmers:
+        pinned = list(dict.fromkeys(pin_kmers))
+        cap = max(vocab_size // 2, 1)
+        if len(pinned) > cap:
+            logger.warning(
+                f"pin_kmers ({len(pinned):,}) exceeds half the vocab ({cap:,}); "
+                f"keeping the first {cap:,} (pre-rank by count upstream)."
+            )
+            pinned = pinned[:cap]
+        long_pins = sum(1 for km in pinned if len(km) >= 16)
+        logger.log(
+            "STAGE",
+            f"[tokenizer:train] pinning {len(pinned):,} k-mers as atomic tokens "
+            f"({long_pins:,} are ≥16 bp)",
+        )
+        user_symbols += pinned
     logger.info(
         f"Estimated max_sentence_length: {max_sentence_length:,} bytes (from {sample_size} samples)"
     )
@@ -627,7 +657,7 @@ def train_google_sentencepiece(
         split_by_unicode_script=False,
         split_by_number=False,
         normalization_rule_name="identity",
-        user_defined_symbols="[CLS],[SEP],[MASK]",
+        user_defined_symbols=user_symbols,
         pad_id=3,
         train_extremely_large_corpus=True,
         num_threads=num_threads,
@@ -657,7 +687,18 @@ def train_google_sentencepiece(
     # then prepend the pinned five. Specials never match DNA substrings, so a
     # score of 0.0 is inert during Unigram segmentation of reads.
     _drop = set(_SPM_SPECIALS) | {"<s>", "</s>"}
-    learned = [(p, s) for (p, s) in raw_pieces if p not in _drop]
+    # Conserved k-mers are pinned as user-defined symbols, but the .vocab → HF
+    # Unigram rebuild loses SPM's "atomic" flag, so they would just compete in
+    # Viterbi (≈68% emitted whole). Boost their score to 0.0 (the max, like the
+    # specials) so the segmentation always prefers the full pinned k-mer wherever
+    # it matches — the ≥16 bp entropy-consistent token. Covers both the bare and
+    # the ▁-prefixed (read-initial) form.
+    _pin_set = set(pin_kmers) if pin_kmers else set()
+    learned = [
+        (p, 0.0 if (_pin_set and p.lstrip("▁") in _pin_set) else s)
+        for (p, s) in raw_pieces
+        if p not in _drop
+    ]
     vocab_pieces = [(tok, 0.0) for tok in _SPM_SPECIALS] + learned
     unk_id = _SPM_SPECIALS.index("<unk>")
 
@@ -746,6 +787,32 @@ def _iter_jellyfish_dump(path):
             kmer = parts[0]
             count = int(parts[1]) if len(parts) > 1 else 1
             yield kmer, count
+
+
+def _select_pin_kmers(counts_iter, pin_k, min_count, max_n):
+    """Top-``max_n`` ``pin_k``-mers (by count) from a ``(kmer, count)`` stream.
+
+    Aggregates duplicate k-mers, drops those of the wrong length or below
+    ``min_count``, and returns the most frequent — the conserved k-mers worth
+    pinning as atomic SPM tokens.
+    """
+    agg = collections.Counter()
+    for kmer, count in counts_iter:
+        if len(kmer) == pin_k:
+            agg[kmer] += count
+    ranked = sorted(
+        ((km, c) for km, c in agg.items() if c >= min_count),
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    return [km for km, _ in ranked[:max_n]]
+
+
+def _kmer_counts_from_sequences(sequences, pin_k):
+    """Yield ``(kmer, 1)`` for every overlapping ``pin_k``-mer in *sequences*."""
+    for seq in sequences:
+        for j in range(len(seq) - pin_k + 1):
+            yield seq[j : j + pin_k], 1
 
 
 def build_salmon_index(
@@ -968,6 +1035,25 @@ def train(
         "reads inside max_position_embeddings. Default is the k-mer-split path.",
         envvar="TOKENIZER_RAW_READ",
     ),
+    pin_kmers: Optional[Path] = typer.Option(
+        None,
+        "--pin-kmers",
+        help="spm only: jellyfish 'dump -c' (or one-k-mer-per-line) file of "
+        "conserved L1 k-mers to force into the vocab as atomic tokens, so the "
+        "entropy-justified ≥16 bp k-mers stay whole (Salmon target index as SPM "
+        "pieces). Mutually informative with --raw-read.",
+    ),
+    pin_from_extra: bool = typer.Option(
+        False,
+        "--pin-from-extra",
+        help="spm only: derive the pinned k-mers from --extra-corpus sequences "
+        "(top --pin-max by frequency) instead of a --pin-kmers dump.",
+    ),
+    pin_k: Optional[int] = typer.Option(None, help="Length of pinned k-mers (defaults to --k)."),
+    pin_min_count: int = typer.Option(1, help="Drop pinned k-mers below this count."),
+    pin_max: int = typer.Option(
+        8192, help="Keep at most this many (most frequent) pinned k-mers."
+    ),
     debug: bool = typer.Option(
         False,
         "--debug",
@@ -1118,6 +1204,29 @@ def train(
     elif extra_corpus is not None and debug:
         logger.warning("DEBUG MODE: --extra-corpus ignored")
 
+    # Collect conserved k-mers to pin as atomic SPM tokens (entropy consistency):
+    # from a jellyfish dump, or derived from the prepended --extra-corpus.
+    _pin_list = None
+    if not debug and (pin_kmers is not None or pin_from_extra):
+        _pin_k = pin_k or k
+        if pin_kmers is not None:
+            _pin_list = _select_pin_kmers(
+                _iter_jellyfish_dump(str(pin_kmers)), _pin_k, pin_min_count, pin_max
+            )
+            logger.info(f"Pinning {len(_pin_list):,} k-mers from dump {pin_kmers}")
+        elif pin_from_extra and n_pinned:
+            _pin_list = _select_pin_kmers(
+                _kmer_counts_from_sequences(sequences[:n_pinned], _pin_k),
+                _pin_k,
+                pin_min_count,
+                pin_max,
+            )
+            logger.info(f"Pinning {len(_pin_list):,} k-mers derived from --extra-corpus")
+        elif pin_from_extra:
+            logger.warning("--pin-from-extra set but no --extra-corpus; skipping pin.")
+        if _pin_list is not None and algorithm != "spm":
+            logger.warning("k-mer pinning only applies to --algorithm spm; ignored.")
+
     if algorithm == "bpe":
         train_bpe(
             sequences,
@@ -1144,6 +1253,7 @@ def train(
             max_training_chars=max_training_chars,
             n_pinned=n_pinned,
             raw_read=raw_read,
+            pin_kmers=_pin_list,
         )
     elif algorithm == "unigram":
         train_sentencepiece(

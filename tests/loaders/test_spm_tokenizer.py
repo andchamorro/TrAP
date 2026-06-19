@@ -169,6 +169,51 @@ class TestRawRead:
         assert (tok.cls_token_id, tok.pad_token_id, tok.sep_token_id) == (0, 1, 2)
 
 
+@pytest.fixture(scope="module")
+def pin_dir(tmp_path_factory, reads):
+    """Raw-read tokenizer with two conserved 17-mers pinned as atomic tokens."""
+    out = tmp_path_factory.mktemp("spmpin")
+    pins = [reads[0][20:37], reads[1][30:47]]  # 17-mers present in the corpus
+    train_google_sentencepiece(
+        reads,
+        out=str(out),
+        name="pin",
+        vocab_size=500,
+        k=17,
+        fast=True,
+        num_threads=2,
+        raw_read=True,
+        pin_kmers=pins,
+    )
+    return str(out / "pin"), pins
+
+
+@pytest.mark.integration
+class TestPinning:
+    @pytest.fixture(autouse=True)
+    def _optin(self, monkeypatch):
+        monkeypatch.setenv("TRAP_SPM_EXPERIMENTAL", "1")
+
+    def test_pinned_kmer_is_a_single_vocab_piece(self, pin_dir):
+        # Option 2: the conserved >=16 bp k-mer is forced whole into the vocab,
+        # restoring per-token specificity where the entropy argument needs it.
+        path, pins = pin_dir
+        tok = load_kmer_tokenizer(path)
+        for km in pins:
+            assert len(km) >= 16
+            tid = tok.convert_tokens_to_ids(km)
+            assert tid is not None and tid != tok.unk_token_id
+
+    def test_pinning_compresses_a_pinned_kmer(self, pin_dir):
+        # A read built around a pinned k-mer tokenizes to fewer pieces than the
+        # k-mer's length (it is not shattered to char-level there).
+        path, pins = pin_dir
+        tok = load_kmer_tokenizer(path)
+        read = "AAA" + pins[0] + "TTT"
+        ids = tok(read, add_special_tokens=False)["input_ids"]
+        assert len(ids) < len(read)
+
+
 @pytest.mark.integration
 class TestOptInGuard:
     def test_load_rejected_without_optin(self, spm_dir, monkeypatch):
