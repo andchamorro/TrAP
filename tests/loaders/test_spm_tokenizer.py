@@ -204,14 +204,38 @@ class TestPinning:
             tid = tok.convert_tokens_to_ids(km)
             assert tid is not None and tid != tok.unk_token_id
 
-    def test_pinning_compresses_a_pinned_kmer(self, pin_dir):
-        # A read built around a pinned k-mer tokenizes to fewer pieces than the
-        # k-mer's length (it is not shattered to char-level there).
+    def test_pinned_kmer_always_emitted_whole(self, pin_dir):
+        # Hard guarantee (AddedVocabulary): a pinned k-mer is emitted as exactly
+        # one token wherever it occurs, regardless of flanking context.
         path, pins = pin_dir
         tok = load_kmer_tokenizer(path)
-        read = "AAA" + pins[0] + "TTT"
+        rng = random.Random(0)
+        for km in pins:
+            for _ in range(20):
+                read = (
+                    "".join(rng.choice("ACGT") for _ in range(25))
+                    + km
+                    + "".join(rng.choice("ACGT") for _ in range(25))
+                )
+                toks = tok.convert_ids_to_tokens(tok(read, add_special_tokens=False)["input_ids"])
+                assert km in toks
+
+    def test_pinning_no_vocab_growth(self, pin_dir):
+        # add_tokens reuses the existing model ids (the pins are already pieces),
+        # so no token lands beyond the base vocab → len == vocab_size and every
+        # pinned id is inside the base table.
+        path, pins = pin_dir
+        tok = load_kmer_tokenizer(path)
+        assert len(tok) == tok.vocab_size
+        for km in pins:
+            assert tok.convert_tokens_to_ids(km) < tok.vocab_size
+
+    def test_pinned_decode_round_trips(self, pin_dir):
+        path, pins = pin_dir
+        tok = load_kmer_tokenizer(path)
+        read = "AAACGT" + pins[0] + "TTTGCA" + pins[1]
         ids = tok(read, add_special_tokens=False)["input_ids"]
-        assert len(ids) < len(read)
+        assert tok.decode(ids).replace(" ", "") == read
 
 
 @pytest.mark.integration
