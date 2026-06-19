@@ -48,6 +48,13 @@ DEFAULT_MAX_TRAINING_CHARS = 500_000_000
 # tokenizer's pinning (trap/loaders/salmon_tokenizer.py).
 _SPM_SPECIALS = ["[CLS]", "<pad>", "[SEP]", "<unk>", "[MASK]"]
 
+# Sidecar written next to an SPM tokenizer recording how it tokenizes input:
+# raw_read=True  → feed the raw read (no k-mer pre-split);
+# raw_read=False → feed space-joined overlapping k-mers (the default path).
+# load_kmer_tokenizer reads it and tags the tokenizer so the diagnostic and
+# preprocessing know whether to k-mer-split before tokenizing.
+_SPM_MARKER = "trap_spm_config.json"
+
 
 def _spm_experimental_enabled() -> bool:
     """True when the SPM path is explicitly opted into.
@@ -62,6 +69,26 @@ def _spm_experimental_enabled() -> bool:
         "1",
         "true",
         "yes",
+    )
+
+
+def _write_spm_marker(tok_dir, raw_read, k):
+    """Record the SPM input mode next to the tokenizer (see ``_SPM_MARKER``)."""
+    import json
+
+    with open(os.path.join(tok_dir, _SPM_MARKER), "w") as fh:
+        json.dump({"raw_read": bool(raw_read), "k": int(k)}, fh)
+
+
+def spm_input_mode(tokenizer):
+    """Return ``(raw_read, k)`` for a loaded SPM tokenizer.
+
+    Falls back to ``(False, 17)`` when the tokenizer carries no TrAP SPM marker
+    (e.g. a legacy BPE/Unigram tokenizer), i.e. assume the k-mer-split path.
+    """
+    return (
+        bool(getattr(tokenizer, "trap_raw_read", False)),
+        int(getattr(tokenizer, "trap_k", 17)),
     )
 
 
@@ -491,6 +518,8 @@ def train_google_sentencepiece(
     seed=3469,
     max_training_chars=DEFAULT_MAX_TRAINING_CHARS,
     n_pinned=0,
+    raw_read=False,
+    raw_max_piece_length=16,
 ):
     """Train a Unigram tokenizer via the Google SentencePiece C++ library.
 
@@ -524,6 +553,14 @@ def train_google_sentencepiece(
             subsampled (seeded) to fit.  Keeps SPM RSS predictable.
         n_pinned: Leading sequences in ``raw_datasets`` to include
             unconditionally (see ``_select_training_indices``).
+        raw_read: When ``True``, train on **raw reads** (DNABERT-2 style): each
+            sequence is one SPM sentence with no k-mer pre-splitting, so SPM
+            learns variable-length subword pieces over the nucleotide stream.
+            A 150 bp read then tokenizes to far fewer tokens (≤ read length even
+            at char-level) than the ~134 overlapping k-mers of the default path,
+            which is what keeps paired reads inside ``max_position_embeddings``.
+        raw_max_piece_length: ``max_sentencepiece_length`` for ``raw_read`` mode
+            (the default path uses ``k + 1``). Longer pieces compress better.
     """
     import sentencepiece as spm
 
@@ -545,17 +582,22 @@ def train_google_sentencepiece(
             f"post-k-mer chars, under the {max_training_chars / 1e6:.0f}M cap)."
         )
 
-    # Estimate max_sentence_length from a random sample of the selected subset.
-    # kmer_split(k, seq) produces (len(seq)-k+1) k-mers separated by spaces;
-    # for pure ASCII DNA, byte length == char length.
+    # The training sentence for each read: raw nucleotides (raw_read) or the
+    # space-joined overlapping k-mers (default). Defined once so the length
+    # estimate and the SPM iterator stay consistent.
+    def _sentence(i):
+        return raw_datasets[i] if raw_read else kmer_split(k, raw_datasets[i])
+
+    # Estimate max_sentence_length from a random sample of the selected subset;
+    # for pure ASCII DNA, byte length == char length. SPM rejects
+    # max_sentence_length < 10, so clamp the floor (short reads / k-mers).
     sample_size = min(1000, len(indices))
     sample_indices = random.Random(seed).sample(indices, sample_size)
-    # SPM rejects max_sentence_length < 10; clamp so very short reads (e.g. a
-    # standalone-k-mer corpus) do not trip the floor.
     max_sentence_length = max(
-        int(max(len(kmer_split(k, raw_datasets[i]).encode()) for i in sample_indices) * 1.2),
+        int(max(len(_sentence(i).encode()) for i in sample_indices) * 1.2),
         16,
     )
+    max_piece_length = raw_max_piece_length if raw_read else k + 1
     logger.info(
         f"Estimated max_sentence_length: {max_sentence_length:,} bytes (from {sample_size} samples)"
     )
@@ -571,14 +613,14 @@ def train_google_sentencepiece(
     )
 
     spm.SentencePieceTrainer.train(
-        sentence_iterator=(kmer_split(k, raw_datasets[i]) for i in indices),
+        sentence_iterator=(_sentence(i) for i in indices),
         model_prefix=model_prefix,
         model_type="unigram",
         vocab_size=vocab_size,
-        # +1 for the leading metaspace marker (▁): a whole k-mer piece is
-        # ▁ + k chars = k+1 long, so capping at k would forbid any frequent
-        # k-mer from ever being a single piece (the fragmentation bug).
-        max_sentencepiece_length=k + 1,
+        # Default path: +1 for the leading metaspace marker (▁), so a whole
+        # k-mer piece (▁ + k chars) is reachable. raw_read path: a larger cap
+        # so SPM can learn longer motif pieces over the raw nucleotide stream.
+        max_sentencepiece_length=max_piece_length,
         max_sentence_length=max_sentence_length,
         input_sentence_size=input_sentence_size,
         shuffle_input_sentence=True,
@@ -665,8 +707,13 @@ def train_google_sentencepiece(
         )
         logger.info("Saving as PreTrainedTokenizerFast ...")
         fast_tokenizer.save_pretrained(os.path.join(out, name))
-        logger.success("Google SentencePiece tokenizer training complete.")
+        _write_spm_marker(os.path.join(out, name), raw_read=raw_read, k=k)
+        logger.success(
+            f"Google SentencePiece tokenizer training complete "
+            f"(mode={'raw-read' if raw_read else 'kmer'})."
+        )
     else:
+        _write_spm_marker(os.path.join(out, name), raw_read=raw_read, k=k)
         logger.success(f"SPM model saved to {model_prefix}.model / .vocab")
 
 
@@ -804,6 +851,16 @@ def load_kmer_tokenizer(tokenizer_path, max_position=None):
                 ("[SEP]", tokenizer.convert_tokens_to_ids("[SEP]")),
             ],
         )
+        # Tag SPM tokenizers with their input mode so the diagnostic and
+        # preprocessing know whether to k-mer-split before tokenizing.
+        marker = os.path.join(path, _SPM_MARKER)
+        if os.path.exists(marker):
+            import json
+
+            with open(marker) as fh:
+                cfg = json.load(fh)
+            tokenizer.trap_raw_read = bool(cfg.get("raw_read", False))
+            tokenizer.trap_k = int(cfg.get("k", 17))
     if max_position is not None:
         tokenizer.model_max_length = max_position
     return tokenizer
@@ -903,6 +960,14 @@ def train(
         envvar="TOKENIZER_NUM_THREADS",
     ),
     seed: int = typer.Option(3469, help="Global RNG seed"),
+    raw_read: bool = typer.Option(
+        False,
+        "--raw-read/--kmer-split",
+        help="spm only: train on raw reads (no overlapping k-mer pre-split) so "
+        "SPM learns subword pieces over the nucleotide stream. Keeps paired "
+        "reads inside max_position_embeddings. Default is the k-mer-split path.",
+        envvar="TOKENIZER_RAW_READ",
+    ),
     debug: bool = typer.Option(
         False,
         "--debug",
@@ -1078,6 +1143,7 @@ def train(
             seed=seed,
             max_training_chars=max_training_chars,
             n_pinned=n_pinned,
+            raw_read=raw_read,
         )
     elif algorithm == "unigram":
         train_sentencepiece(
@@ -1168,6 +1234,15 @@ def spm_fragmentation(
             "construction (e.g. the Salmon canonical tokenizer). Gate is trivial."
         )
 
+    raw_read, tok_k = spm_input_mode(tokenizer)
+    if getattr(tokenizer, "trap_k", None) is not None:
+        k = tok_k  # trust the tokenizer's own k over the CLI default
+
+    # raw_read: feed the raw read (no overlapping k-mer pre-split); else feed
+    # the space-joined k-mers the k-mer tokenizer expects.
+    def _text(seq):
+        return seq if raw_read else kmer_split(k, seq)
+
     rng = random.Random(seed)
     r1 = GenomeDataset(builder, file_format).sequences
     reads2 = GenomeDataset(pair, file_format).sequences if pair is not None else None
@@ -1177,7 +1252,8 @@ def spm_fragmentation(
     idx = rng.sample(range(n), min(sample, n))
     logger.log(
         "STAGE",
-        f"[tokenizer:spm_fragmentation] tokenizer={tokenizer_path} reads={n:,} "
+        f"[tokenizer:spm_fragmentation] tokenizer={tokenizer_path} "
+        f"mode={'raw-read' if raw_read else 'kmer'} reads={n:,} "
         f"sampled={len(idx):,} k={k} max_pos={max_position_embeddings}",
     )
 
@@ -1186,16 +1262,16 @@ def spm_fragmentation(
     total_real, total_unk = 0, 0
     for i in idx:
         seq0 = r1[i]
-        n_kmers0 = max(len(seq0) - k + 1, 0)
-        ids0 = tokenizer(kmer_split(k, seq0), add_special_tokens=False)["input_ids"]
-        if n_kmers0:
-            ratios.append(len(ids0) / n_kmers0)
+        ids0 = tokenizer(_text(seq0), add_special_tokens=False)["input_ids"]
+        # kmer mode: tokens per k-mer (1.0 = whole k-mers); raw mode: bases per
+        # token (compression — higher is better, 1.0 = char-level worst case).
+        denom = (len(seq0) if raw_read else max(len(seq0) - k + 1, 0)) or None
+        if denom:
+            ratios.append((len(seq0) / len(ids0)) if raw_read else (len(ids0) / denom))
         toks_read.append(len(ids0))
         if reads2 is not None:
             seq1 = reads2[i]
-            paired = tokenizer(kmer_split(k, seq0), kmer_split(k, seq1), add_special_tokens=True)[
-                "input_ids"
-            ]
+            paired = tokenizer(_text(seq0), _text(seq1), add_special_tokens=True)["input_ids"]
             toks_pair.append(len(paired))
             real_ids = paired
         else:
@@ -1205,7 +1281,8 @@ def spm_fragmentation(
             total_unk += sum(1 for t in real_ids if t == unk_id)
 
     coverage = 100.0 * (1.0 - total_unk / total_real) if total_real else 0.0
-    logger.log("STAGE", f"[tokenizer:spm_fragmentation] {_summarize(ratios, 'pieces/kmer')}")
+    ratio_label = "bases/token" if raw_read else "pieces/kmer"
+    logger.log("STAGE", f"[tokenizer:spm_fragmentation] {_summarize(ratios, ratio_label)}")
     logger.log("STAGE", f"[tokenizer:spm_fragmentation] {_summarize(toks_read, 'tokens/read')}")
     if toks_pair:
         logger.log(
