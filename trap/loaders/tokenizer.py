@@ -612,6 +612,7 @@ def train_google_sentencepiece(
     # target index, expressed as SPM pieces). Deduped; capped with a warning so a
     # runaway pin list cannot crowd out the learned subword vocab.
     user_symbols = ["[CLS]", "[SEP]", "[MASK]"]
+    pinned = []
     if pin_kmers:
         pinned = list(dict.fromkeys(pin_kmers))
         cap = max(vocab_size // 2, 1)
@@ -689,11 +690,11 @@ def train_google_sentencepiece(
     _drop = set(_SPM_SPECIALS) | {"<s>", "</s>"}
     # Conserved k-mers are pinned as user-defined symbols, but the .vocab → HF
     # Unigram rebuild loses SPM's "atomic" flag, so they would just compete in
-    # Viterbi (≈68% emitted whole). Boost their score to 0.0 (the max, like the
-    # specials) so the segmentation always prefers the full pinned k-mer wherever
-    # it matches — the ≥16 bp entropy-consistent token. Covers both the bare and
-    # the ▁-prefixed (read-initial) form.
-    _pin_set = set(pin_kmers) if pin_kmers else set()
+    # Viterbi. Boost their score to 0.0 (the max, like the specials) so the
+    # lattice prefers the full pinned k-mer; the hard guarantee comes from
+    # registering them as AddedTokens below (carved out before the lattice).
+    # Covers both the bare and the ▁-prefixed (read-initial) form.
+    _pin_set = set(pinned)
     learned = [
         (p, 0.0 if (_pin_set and p.lstrip("▁") in _pin_set) else s)
         for (p, s) in raw_pieces
@@ -746,6 +747,25 @@ def train_google_sentencepiece(
                 ("[SEP]", fast_tokenizer.convert_tokens_to_ids("[SEP]")),
             ],
         )
+        if pinned:
+            # Hard guarantee: register the pinned k-mers in the AddedVocabulary so
+            # they are carved out *before* the Unigram lattice and always emitted
+            # whole. They already exist as model pieces, so add_tokens reuses those
+            # ids — len(tokenizer) does not grow (the embedding table is unchanged).
+            from tokenizers import AddedToken
+
+            before = len(fast_tokenizer)
+            fast_tokenizer.add_tokens(
+                [
+                    AddedToken(km, normalized=False, special=False, single_word=False)
+                    for km in pinned
+                ]
+            )
+            if len(fast_tokenizer) != before:
+                logger.warning(
+                    f"add_tokens grew the vocab {before:,}→{len(fast_tokenizer):,}; "
+                    "some pinned k-mers were not already model pieces."
+                )
         logger.info("Saving as PreTrainedTokenizerFast ...")
         fast_tokenizer.save_pretrained(os.path.join(out, name))
         _write_spm_marker(os.path.join(out, name), raw_read=raw_read, k=k)
