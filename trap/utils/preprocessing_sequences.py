@@ -828,6 +828,10 @@ def classification(
                     padding=padding,
                     pad_to_multiple_of=8,
                     truncation=True,
+                    # Emit segment ids (read_1=0, read_2=1) so the classifier sees
+                    # the R1/R2 boundary, matching the Salmon path; fast tokenizers
+                    # otherwise omit token_type_ids and the model defaults to zeros.
+                    return_token_type_ids=True,
                     verbose=False,
                 )
 
@@ -860,6 +864,7 @@ def classification(
                     padding=padding,
                     pad_to_multiple_of=8,
                     truncation=True,
+                    return_token_type_ids=True,
                     verbose=False,
                 )
 
