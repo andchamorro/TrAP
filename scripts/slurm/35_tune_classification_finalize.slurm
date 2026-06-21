@@ -20,9 +20,12 @@ source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"
 load_cpu_modules
 activate_trap
 
+# --out is run-namespaced (CLS_TUNED_OUT) so an SPM sweep does not overwrite the
+# Salmon tuned config; feed it into stage 40 via CLS_TRAINER_CONFIG.
 python -m trap.modeling.tune finalize \
     --search-config "${CLS_SEARCH_CONFIG}" \
     --study-name "${STUDY_CLS}" \
-    --storage "${TUNE_JOURNAL_CLS}"
+    --storage "${TUNE_JOURNAL_CLS}" \
+    --out "${CLS_TUNED_OUT}"
 
-echo "[35_tune_classification_finalize] wrote config/training/classification_final.tuned.json"
+echo "[35_tune_classification_finalize] wrote ${CLS_TUNED_OUT}"

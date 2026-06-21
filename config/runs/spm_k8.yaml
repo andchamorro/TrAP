@@ -1,0 +1,36 @@
+# Google SentencePiece Unigram pipeline at k=8 — the fragmentation fallback.
+#
+# Sibling of config/runs/spm.yaml. Shorter k-mers fragment less under SPM's
+# subword model (an 8-mer is far likelier to survive as one or two pieces than a
+# 17-mer), so this is the path to try if k=17 fails the fragmentation gate
+# (p99 tokens/pair >= max_position_embeddings). Note that overlapping stride-1
+# 8-mers also produce MORE k-mers per read (143 for a 150 bp read vs 134 at
+# k=17), so the gate — not intuition — is the arbiter.
+#
+# Requires TRAP_SPM_EXPERIMENTAL=1 (see spm.yaml).
+#
+# Usage:
+#   TRAP_SPM_EXPERIMENTAL=1 bash scripts/slurm/submit_pipeline.sh \
+#       --run-config config/runs/spm_k8.yaml
+
+extends: default
+
+k: 8
+vocab: 65541
+
+tokenizer:
+  algorithm: spm
+  name: tokenizer.gencode.v48.k8.spm
+  num_threads: 48
+  max_training_chars: 4000000000
+
+mlm_processing_name: gencode.v48.k8.spm
+processing_name: gencode.v48.k8.spm/l1hs_l1pa2
+model_mlm: albert.gencode.v48.k8.spm
+model_cls: albert.l1hs_l1pa2.v48.k8.spm
+
+resources:
+  10:
+    time: "08:00:00"
+    cpus: 48
+    mem: 256G

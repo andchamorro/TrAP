@@ -42,6 +42,55 @@ def _cli() -> None:
 # also bounds peak memory (esaxx allocates ~3x the flat-string size).
 DEFAULT_MAX_TRAINING_CHARS = 500_000_000
 
+# Pinned special tokens for the SPM path. The order fixes the ids
+# ([CLS]=0, <pad>=1, [SEP]=2, <unk>=3, [MASK]=4) so they match
+# config/albert_config_k17_v48.json (bos=0, pad=1, eos=2) and the Salmon
+# tokenizer's pinning (trap/loaders/salmon_tokenizer.py).
+_SPM_SPECIALS = ["[CLS]", "<pad>", "[SEP]", "<unk>", "[MASK]"]
+
+# Sidecar written next to an SPM tokenizer recording how it tokenizes input:
+# raw_read=True  → feed the raw read (no k-mer pre-split);
+# raw_read=False → feed space-joined overlapping k-mers (the default path).
+# load_kmer_tokenizer reads it and tags the tokenizer so the diagnostic and
+# preprocessing know whether to k-mer-split before tokenizing.
+_SPM_MARKER = "trap_spm_config.json"
+
+
+def _spm_experimental_enabled() -> bool:
+    """True when the SPM path is explicitly opted into.
+
+    The SPM tokenizer is re-opened as an exploration on the
+    ``explore/spm-metaspace-tokenizer`` branch (the metaspace pre-tokenizer
+    mismatch is fixed; see ``train_google_sentencepiece``). It stays gated
+    behind ``TRAP_SPM_EXPERIMENTAL=1`` so the default pipeline keeps its
+    foot-gun protection and Salmon remains the default tokenizer.
+    """
+    return os.environ.get("TRAP_SPM_EXPERIMENTAL", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _write_spm_marker(tok_dir, raw_read, k):
+    """Record the SPM input mode next to the tokenizer (see ``_SPM_MARKER``)."""
+    import json
+
+    with open(os.path.join(tok_dir, _SPM_MARKER), "w") as fh:
+        json.dump({"raw_read": bool(raw_read), "k": int(k)}, fh)
+
+
+def spm_input_mode(tokenizer):
+    """Return ``(raw_read, k)`` for a loaded SPM tokenizer.
+
+    Falls back to ``(False, 17)`` when the tokenizer carries no TrAP SPM marker
+    (e.g. a legacy BPE/Unigram tokenizer), i.e. assume the k-mer-split path.
+    """
+    return (
+        bool(getattr(tokenizer, "trap_raw_read", False)),
+        int(getattr(tokenizer, "trap_k", 17)),
+    )
+
 
 def _select_training_indices(raw_datasets, k, max_chars, seed, n_pinned=0):
     """Pick a seeded subset of sequence indices for tokenizer training.
@@ -266,7 +315,6 @@ def train_wordpiece(
     k=17,
     fast=False,
 ):
-
     # Initialize an empty tokenizer
     tokenizer = BertWordPieceTokenizer(
         clean_text=True,
@@ -470,6 +518,9 @@ def train_google_sentencepiece(
     seed=3469,
     max_training_chars=DEFAULT_MAX_TRAINING_CHARS,
     n_pinned=0,
+    raw_read=False,
+    raw_max_piece_length=32,
+    pin_kmers=None,
 ):
     """Train a Unigram tokenizer via the Google SentencePiece C++ library.
 
@@ -492,7 +543,8 @@ def train_google_sentencepiece(
         out: Output directory; tokenizer saved under ``<out>/<name>/``.
         name: Tokenizer directory name.
         vocab_size: Target vocabulary size.
-        k: K-mer length; also sets ``max_sentencepiece_length``.
+        k: K-mer length; also sets ``max_sentencepiece_length`` to ``k + 1``
+            (the extra char is the leading ▁ metaspace marker).
         fast: Wrap as ``PreTrainedTokenizerFast`` and save in HF JSON format.
         input_sentence_size: SPM built-in reservoir-sampling cap (sentences).
             Acts as a secondary guard; the primary cap is ``max_training_chars``.
@@ -502,6 +554,21 @@ def train_google_sentencepiece(
             subsampled (seeded) to fit.  Keeps SPM RSS predictable.
         n_pinned: Leading sequences in ``raw_datasets`` to include
             unconditionally (see ``_select_training_indices``).
+        raw_read: When ``True``, train on **raw reads** (DNABERT-2 style): each
+            sequence is one SPM sentence with no k-mer pre-splitting, so SPM
+            learns variable-length subword pieces over the nucleotide stream.
+            A 150 bp read then tokenizes to far fewer tokens (≤ read length even
+            at char-level) than the ~134 overlapping k-mers of the default path,
+            which is what keeps paired reads inside ``max_position_embeddings``.
+        raw_max_piece_length: ``max_sentencepiece_length`` for ``raw_read`` mode
+            (the default path uses ``k + 1``). Longer pieces compress better and
+            let conserved motifs survive at the ≥16 bp length the k-mer entropy
+            argument calls for (k ≳ log4(genome) ≈ 16 for per-token uniqueness).
+        pin_kmers: Optional list of k-mer strings forced into the vocab as SPM
+            ``user_defined_symbols`` (atomic, never split). Seed these with the
+            conserved L1 k-mers that feed the Salmon target index so the
+            entropy-justified ≥16 bp k-mers become guaranteed single tokens,
+            with subword fallback for everything else.
     """
     import sentencepiece as spm
 
@@ -523,15 +590,48 @@ def train_google_sentencepiece(
             f"post-k-mer chars, under the {max_training_chars / 1e6:.0f}M cap)."
         )
 
-    # Estimate max_sentence_length from a random sample of the selected subset.
-    # kmer_split(k, seq) produces (len(seq)-k+1) k-mers separated by spaces;
-    # for pure ASCII DNA, byte length == char length.
+    # The training sentence for each read: raw nucleotides (raw_read) or the
+    # space-joined overlapping k-mers (default). Defined once so the length
+    # estimate and the SPM iterator stay consistent.
+    def _sentence(i):
+        return raw_datasets[i] if raw_read else kmer_split(k, raw_datasets[i])
+
+    # Estimate max_sentence_length from a random sample of the selected subset;
+    # for pure ASCII DNA, byte length == char length. SPM rejects
+    # max_sentence_length < 10, so clamp the floor (short reads / k-mers).
     sample_size = min(1000, len(indices))
     sample_indices = random.Random(seed).sample(indices, sample_size)
-    max_sentence_length = int(
-        max(len(kmer_split(k, raw_datasets[i]).encode()) for i in sample_indices) * 1.2
+    max_sentence_length = max(
+        int(max(len(_sentence(i).encode()) for i in sample_indices) * 1.2),
+        16,
     )
-    logger.info(f"Estimated max_sentence_length: {max_sentence_length:,} bytes (from {sample_size} samples)")
+    max_piece_length = raw_max_piece_length if raw_read else k + 1
+
+    # Force conserved k-mers into the vocab as atomic user-defined symbols so the
+    # entropy-justified ≥16 bp k-mers become guaranteed single tokens (the Salmon
+    # target index, expressed as SPM pieces). Deduped; capped with a warning so a
+    # runaway pin list cannot crowd out the learned subword vocab.
+    user_symbols = ["[CLS]", "[SEP]", "[MASK]"]
+    pinned = []
+    if pin_kmers:
+        pinned = list(dict.fromkeys(pin_kmers))
+        cap = max(vocab_size // 2, 1)
+        if len(pinned) > cap:
+            logger.warning(
+                f"pin_kmers ({len(pinned):,}) exceeds half the vocab ({cap:,}); "
+                f"keeping the first {cap:,} (pre-rank by count upstream)."
+            )
+            pinned = pinned[:cap]
+        long_pins = sum(1 for km in pinned if len(km) >= 16)
+        logger.log(
+            "STAGE",
+            f"[tokenizer:train] pinning {len(pinned):,} k-mers as atomic tokens "
+            f"({long_pins:,} are ≥16 bp)",
+        )
+        user_symbols += pinned
+    logger.info(
+        f"Estimated max_sentence_length: {max_sentence_length:,} bytes (from {sample_size} samples)"
+    )
 
     logger.log(
         "STAGE",
@@ -544,18 +644,21 @@ def train_google_sentencepiece(
     )
 
     spm.SentencePieceTrainer.train(
-        sentence_iterator=(kmer_split(k, raw_datasets[i]) for i in indices),
+        sentence_iterator=(_sentence(i) for i in indices),
         model_prefix=model_prefix,
         model_type="unigram",
         vocab_size=vocab_size,
-        max_sentencepiece_length=k,
+        # Default path: +1 for the leading metaspace marker (▁), so a whole
+        # k-mer piece (▁ + k chars) is reachable. raw_read path: a larger cap
+        # so SPM can learn longer motif pieces over the raw nucleotide stream.
+        max_sentencepiece_length=max_piece_length,
         max_sentence_length=max_sentence_length,
         input_sentence_size=input_sentence_size,
         shuffle_input_sentence=True,
         split_by_unicode_script=False,
         split_by_number=False,
         normalization_rule_name="identity",
-        user_defined_symbols="[CLS],[SEP],[MASK]",
+        user_defined_symbols=user_symbols,
         pad_id=3,
         train_extremely_large_corpus=True,
         num_threads=num_threads,
@@ -570,21 +673,49 @@ def train_google_sentencepiece(
     # requires in tokenizers >=0.20).  The .vocab format is one "piece\tscore"
     # per line; scores are natural-log probabilities, matching HF Unigram exactly.
     from tokenizers import Tokenizer
+    from tokenizers import decoders as _decoders
     from tokenizers import pre_tokenizers as _pre_tokenizers
     from tokenizers.models import Unigram
 
-    vocab_pieces = []
+    raw_pieces = []
     with open(vocab_path) as fv:
         for line in fv:
             piece, score = line.rstrip("\n").split("\t")
-            vocab_pieces.append((piece, float(score)))
+            raw_pieces.append((piece, float(score)))
 
-    unk_id = next(
-        (i for i, (piece, _) in enumerate(vocab_pieces) if piece == "<unk>"),
-        0,
-    )
+    # Pin the specials to ids 0..4 (albert_config order). Drop SPM's own
+    # control symbols (<s>, </s>) and any learned duplicate of a pinned special,
+    # then prepend the pinned five. Specials never match DNA substrings, so a
+    # score of 0.0 is inert during Unigram segmentation of reads.
+    _drop = set(_SPM_SPECIALS) | {"<s>", "</s>"}
+    # Conserved k-mers are pinned as user-defined symbols, but the .vocab → HF
+    # Unigram rebuild loses SPM's "atomic" flag, so they would just compete in
+    # Viterbi. Boost their score to 0.0 (the max, like the specials) so the
+    # lattice prefers the full pinned k-mer; the hard guarantee comes from
+    # registering them as AddedTokens below (carved out before the lattice).
+    # Covers both the bare and the ▁-prefixed (read-initial) form.
+    _pin_set = set(pinned)
+    learned = [
+        (p, 0.0 if (_pin_set and p.lstrip("▁") in _pin_set) else s)
+        for (p, s) in raw_pieces
+        if p not in _drop
+    ]
+    vocab_pieces = [(tok, 0.0) for tok in _SPM_SPECIALS] + learned
+    unk_id = _SPM_SPECIALS.index("<unk>")
+
     hf_tokenizer = Tokenizer(Unigram(vocab_pieces, unk_id=unk_id))
-    hf_tokenizer.pre_tokenizer = _pre_tokenizers.Whitespace()
+    # Metaspace (not Whitespace): SPM stores word-initial pieces with a leading
+    # ▁ marker, so the pre-tokenizer must reproduce that marker or every k-mer
+    # falls back to char-level pieces (~k pieces/k-mer — the old corruption).
+    # prepend_scheme="always" + split=True turns "ACGTA CGTAC" into the
+    # ▁ACGTA / ▁CGTAC pre-tokens the vocab was trained on. The matching decoder
+    # makes decode() reconstruct the sequence (content-preserving round-trip).
+    hf_tokenizer.pre_tokenizer = _pre_tokenizers.Metaspace(
+        replacement="▁", prepend_scheme="always", split=True
+    )
+    hf_tokenizer.decoder = _decoders.Metaspace(
+        replacement="▁", prepend_scheme="always", split=True
+    )
 
     logger.info("Post processing ...")
     hf_tokenizer.post_processor = processors.TemplateProcessing(
@@ -616,10 +747,34 @@ def train_google_sentencepiece(
                 ("[SEP]", fast_tokenizer.convert_tokens_to_ids("[SEP]")),
             ],
         )
+        if pinned:
+            # Hard guarantee: register the pinned k-mers in the AddedVocabulary so
+            # they are carved out *before* the Unigram lattice and always emitted
+            # whole. They already exist as model pieces, so add_tokens reuses those
+            # ids — len(tokenizer) does not grow (the embedding table is unchanged).
+            from tokenizers import AddedToken
+
+            before = len(fast_tokenizer)
+            fast_tokenizer.add_tokens(
+                [
+                    AddedToken(km, normalized=False, special=False, single_word=False)
+                    for km in pinned
+                ]
+            )
+            if len(fast_tokenizer) != before:
+                logger.warning(
+                    f"add_tokens grew the vocab {before:,}→{len(fast_tokenizer):,}; "
+                    "some pinned k-mers were not already model pieces."
+                )
         logger.info("Saving as PreTrainedTokenizerFast ...")
         fast_tokenizer.save_pretrained(os.path.join(out, name))
-        logger.success("Google SentencePiece tokenizer training complete.")
+        _write_spm_marker(os.path.join(out, name), raw_read=raw_read, k=k)
+        logger.success(
+            f"Google SentencePiece tokenizer training complete "
+            f"(mode={'raw-read' if raw_read else 'kmer'})."
+        )
     else:
+        _write_spm_marker(os.path.join(out, name), raw_read=raw_read, k=k)
         logger.success(f"SPM model saved to {model_prefix}.model / .vocab")
 
 
@@ -652,6 +807,32 @@ def _iter_jellyfish_dump(path):
             kmer = parts[0]
             count = int(parts[1]) if len(parts) > 1 else 1
             yield kmer, count
+
+
+def _select_pin_kmers(counts_iter, pin_k, min_count, max_n):
+    """Top-``max_n`` ``pin_k``-mers (by count) from a ``(kmer, count)`` stream.
+
+    Aggregates duplicate k-mers, drops those of the wrong length or below
+    ``min_count``, and returns the most frequent — the conserved k-mers worth
+    pinning as atomic SPM tokens.
+    """
+    agg = collections.Counter()
+    for kmer, count in counts_iter:
+        if len(kmer) == pin_k:
+            agg[kmer] += count
+    ranked = sorted(
+        ((km, c) for km, c in agg.items() if c >= min_count),
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    return [km for km, _ in ranked[:max_n]]
+
+
+def _kmer_counts_from_sequences(sequences, pin_k):
+    """Yield ``(kmer, 1)`` for every overlapping ``pin_k``-mer in *sequences*."""
+    for seq in sequences:
+        for j in range(len(seq) - pin_k + 1):
+            yield seq[j : j + pin_k], 1
 
 
 def build_salmon_index(
@@ -731,15 +912,19 @@ def load_kmer_tokenizer(tokenizer_path, max_position=None):
     from trap.loaders.salmon_tokenizer import CONFIG_FILE, SalmonKmerTokenizer
 
     path = str(tokenizer_path)
-    # SentencePiece is deprecated (metaspace/Whitespace mismatch fragments each
-    # k-mer into ~16 char-level pieces). Reject .spm tokenizers loudly rather than
-    # let them silently corrupt a run; use the Salmon canonical k-mer tokenizer.
-    if path.rstrip("/").endswith(".spm") or os.path.exists(os.path.join(path, "spm.model")):
+    # SentencePiece was disabled because a metaspace/Whitespace mismatch
+    # fragmented each k-mer into ~16 char-level pieces. That wiring is fixed on
+    # the SPM-exploration branch (Metaspace pre-tokenizer + decoder); the path is
+    # re-opened only under TRAP_SPM_EXPERIMENTAL=1. Otherwise reject loudly.
+    is_spm = path.rstrip("/").endswith(".spm") or os.path.exists(os.path.join(path, "spm.model"))
+    if is_spm and not _spm_experimental_enabled():
         raise ValueError(
             f"SentencePiece (.spm) tokenizer is DEPRECATED and disabled: {path}. "
-            "Its metaspace pre-tokenizer fragments k-mers (~16 char pieces each), "
-            "silently corrupting tokenization. Use a Salmon canonical k-mer "
-            "tokenizer (built via `python -m trap.loaders.tokenizer salmon_index`)."
+            "Its metaspace pre-tokenizer historically fragmented k-mers (~16 char "
+            "pieces each), silently corrupting tokenization. The wiring is fixed on "
+            "the SPM-exploration branch; set TRAP_SPM_EXPERIMENTAL=1 to opt in, or "
+            "use a Salmon canonical k-mer tokenizer "
+            "(`python -m trap.loaders.tokenizer salmon_index`)."
         )
     if os.path.exists(os.path.join(path, CONFIG_FILE)):
         tokenizer = SalmonKmerTokenizer.from_pretrained(path, local_files_only=True)
@@ -753,6 +938,16 @@ def load_kmer_tokenizer(tokenizer_path, max_position=None):
                 ("[SEP]", tokenizer.convert_tokens_to_ids("[SEP]")),
             ],
         )
+        # Tag SPM tokenizers with their input mode so the diagnostic and
+        # preprocessing know whether to k-mer-split before tokenizing.
+        marker = os.path.join(path, _SPM_MARKER)
+        if os.path.exists(marker):
+            import json
+
+            with open(marker) as fh:
+                cfg = json.load(fh)
+            tokenizer.trap_raw_read = bool(cfg.get("raw_read", False))
+            tokenizer.trap_k = int(cfg.get("k", 17))
     if max_position is not None:
         tokenizer.model_max_length = max_position
     return tokenizer
@@ -833,7 +1028,7 @@ def train(
     algorithm: str = typer.Option(
         "bpe",
         help="'bpe' (fast, default), 'spm' (Google SentencePiece C++, multi-threaded Unigram), "
-             "'unigram' (HF Unigram, slow), or 'wordpiece'",
+        "'unigram' (HF Unigram, slow), or 'wordpiece'",
     ),
     k: int = typer.Option(17, help="K-mer size"),
     vocab_size: int = typer.Option(32000, help="Target vocabulary size"),
@@ -842,19 +1037,57 @@ def train(
     fast: bool = typer.Option(True, help="Wrap as a HuggingFace PreTrainedTokenizerFast"),
     max_training_chars: int = typer.Option(
         DEFAULT_MAX_TRAINING_CHARS,
-        help="Cap on post-k-mer corpus chars (Unigram/HF only); keeps the esaxx "
-        "suffix array under its i32 limit. Sequences are subsampled (seeded) to fit.",
+        help="Cap on post-k-mer corpus chars (Unigram/HF/SPM); keeps the esaxx "
+        "suffix array under its i32 limit and bounds SPM RSS. Sequences are "
+        "subsampled (seeded) to fit.",
+        envvar="TOKENIZER_MAX_TRAINING_CHARS",
     ),
     num_threads: int = typer.Option(
         16,
         help="Parallel threads for training (spm only; ignored by bpe/unigram/wordpiece). "
-             "Defaults to 16; set to $SLURM_CPUS_PER_TASK for full node utilisation.",
+        "Defaults to 16; set to $SLURM_CPUS_PER_TASK for full node utilisation.",
         envvar="TOKENIZER_NUM_THREADS",
     ),
     seed: int = typer.Option(3469, help="Global RNG seed"),
+    raw_read: bool = typer.Option(
+        False,
+        "--raw-read/--kmer-split",
+        help="spm only: train on raw reads (no overlapping k-mer pre-split) so "
+        "SPM learns subword pieces over the nucleotide stream. Keeps paired "
+        "reads inside max_position_embeddings. Default is the k-mer-split path.",
+        envvar="TOKENIZER_RAW_READ",
+    ),
+    pin_kmers: Optional[Path] = typer.Option(
+        None,
+        "--pin-kmers",
+        help="spm only: jellyfish 'dump -c' (or one-k-mer-per-line) file of "
+        "conserved L1 k-mers to force into the vocab as atomic tokens, so the "
+        "entropy-justified ≥16 bp k-mers stay whole (Salmon target index as SPM "
+        "pieces). Mutually informative with --raw-read.",
+        envvar="TOKENIZER_PIN_KMERS",
+    ),
+    pin_from_extra: bool = typer.Option(
+        False,
+        "--pin-from-extra",
+        help="spm only: derive the pinned k-mers from --extra-corpus sequences "
+        "(top --pin-max by frequency) instead of a --pin-kmers dump.",
+        envvar="TOKENIZER_PIN_FROM_EXTRA",
+    ),
+    pin_k: Optional[int] = typer.Option(
+        None, help="Length of pinned k-mers (defaults to --k).", envvar="TOKENIZER_PIN_K"
+    ),
+    pin_min_count: int = typer.Option(
+        1, help="Drop pinned k-mers below this count.", envvar="TOKENIZER_PIN_MIN_COUNT"
+    ),
+    pin_max: int = typer.Option(
+        8192,
+        help="Keep at most this many (most frequent) pinned k-mers.",
+        envvar="TOKENIZER_PIN_MAX",
+    ),
     debug: bool = typer.Option(
         False,
-        "--debug", "-d",
+        "--debug",
+        "-d",
         help=(
             "Debug mode: subsample to 500 sequences, cap vocab at 200, "
             "and append '.debug' to the tokenizer name. Completes in seconds "
@@ -913,16 +1146,18 @@ def train(
 
     if corpus is None:
         raise typer.BadParameter("Provide --corpus (or a config with a 'corpus' field).")
-    if algorithm == "spm":
+    if algorithm == "spm" and not _spm_experimental_enabled():
         raise typer.BadParameter(
-            "SentencePiece (spm) is DEPRECATED and disabled: its metaspace "
-            "pre-tokenizer fragments k-mers (~16 char pieces each), silently "
-            "corrupting tokenization. Use the Salmon canonical k-mer tokenizer "
-            "(`python -m trap.loaders.tokenizer salmon_index`)."
+            "SentencePiece (spm) is DEPRECATED and disabled by default: its "
+            "metaspace pre-tokenizer historically fragmented k-mers (~16 char "
+            "pieces each). The wiring is fixed on the SPM-exploration branch; set "
+            "TRAP_SPM_EXPERIMENTAL=1 to opt in, or use the Salmon canonical k-mer "
+            "tokenizer (`python -m trap.loaders.tokenizer salmon_index`)."
         )
-    if algorithm not in ("bpe", "unigram", "wordpiece"):
+    if algorithm not in ("bpe", "unigram", "wordpiece", "spm"):
         raise typer.BadParameter(
-            f"Unknown algorithm {algorithm!r}; expected 'bpe', 'unigram', or 'wordpiece'."
+            f"Unknown algorithm {algorithm!r}; expected 'bpe', 'unigram', "
+            "'wordpiece', or 'spm' (with TRAP_SPM_EXPERIMENTAL=1)."
         )
 
     # ------------------------------------------------------------------
@@ -931,8 +1166,8 @@ def train(
     # Activate with:  TOKENIZER_DEBUG=1 sbatch 10_tokenizer.slurm
     #              or --debug flag
     # ------------------------------------------------------------------
-    _DEBUG_MAX_SEQS  = 500
-    _DEBUG_VOCAB     = 200
+    _DEBUG_MAX_SEQS = 500
+    _DEBUG_VOCAB = 200
     # Budget sized for ~500 sequences × a typical 50 bp read length
     _DEBUG_MAX_CHARS = _DEBUG_MAX_SEQS * max(50 - k + 1, 1) * (k + 1)
     if debug:
@@ -956,6 +1191,7 @@ def train(
         logger.warning("=" * 60)
 
     import time as _time
+
     _stage_t0 = _time.perf_counter()
     logger.log(
         "STAGE",
@@ -998,6 +1234,29 @@ def train(
     elif extra_corpus is not None and debug:
         logger.warning("DEBUG MODE: --extra-corpus ignored")
 
+    # Collect conserved k-mers to pin as atomic SPM tokens (entropy consistency):
+    # from a jellyfish dump, or derived from the prepended --extra-corpus.
+    _pin_list = None
+    if not debug and (pin_kmers is not None or pin_from_extra):
+        _pin_k = pin_k or k
+        if pin_kmers is not None:
+            _pin_list = _select_pin_kmers(
+                _iter_jellyfish_dump(str(pin_kmers)), _pin_k, pin_min_count, pin_max
+            )
+            logger.info(f"Pinning {len(_pin_list):,} k-mers from dump {pin_kmers}")
+        elif pin_from_extra and n_pinned:
+            _pin_list = _select_pin_kmers(
+                _kmer_counts_from_sequences(sequences[:n_pinned], _pin_k),
+                _pin_k,
+                pin_min_count,
+                pin_max,
+            )
+            logger.info(f"Pinning {len(_pin_list):,} k-mers derived from --extra-corpus")
+        elif pin_from_extra:
+            logger.warning("--pin-from-extra set but no --extra-corpus; skipping pin.")
+        if _pin_list is not None and algorithm != "spm":
+            logger.warning("k-mer pinning only applies to --algorithm spm; ignored.")
+
     if algorithm == "bpe":
         train_bpe(
             sequences,
@@ -1023,6 +1282,8 @@ def train(
             seed=seed,
             max_training_chars=max_training_chars,
             n_pinned=n_pinned,
+            raw_read=raw_read,
+            pin_kmers=_pin_list,
         )
     elif algorithm == "unigram":
         train_sentencepiece(
@@ -1063,6 +1324,130 @@ def train(
     _elapsed = _time.perf_counter() - _stage_t0
     logger.log("STAGE", f"[tokenizer:train] done — elapsed={_elapsed:.1f} s → {tok_dir}")
     logger.success(f"Tokenizer + manifest written to {tok_dir}")
+
+
+def _summarize(values, label):
+    """Return a one-line mean/percentile summary string for *values*."""
+    arr = np.asarray(values, dtype=np.float64)
+    return (
+        f"{label}: mean={arr.mean():.1f}  p50={np.percentile(arr, 50):.1f}  "
+        f"p95={np.percentile(arr, 95):.1f}  p99={np.percentile(arr, 99):.1f}  "
+        f"max={arr.max():.1f}"
+    )
+
+
+@app.command()
+def spm_fragmentation(
+    tokenizer_path: Path = typer.Option(..., help="Trained tokenizer directory"),
+    builder: Path = typer.Option(..., help="FASTA/FASTQ reads (R1 or single)"),
+    pair: Optional[Path] = typer.Option(None, help="Paired-end R2 file"),
+    file_format: str = typer.Option("fastq", help="BioPython format string"),
+    k: int = typer.Option(17, help="K-mer size (must match the tokenizer)"),
+    max_position_embeddings: int = typer.Option(
+        1280, help="Model position budget; the pass/fail reference for tokens-per-pair"
+    ),
+    sample: int = typer.Option(5000, help="Number of reads (pairs) to sample"),
+    seed: int = typer.Option(3469, help="Sampling seed"),
+    verbosity: str = typer.Option("normal", "--verbosity", envvar="TRAP_VERBOSITY"),
+):
+    """Hard Gate 1 — quantify SPM subword fragmentation on real reads.
+
+    Because SentencePiece is a *subword* tokenizer, a read no longer maps to a
+    fixed token count: each overlapping k-mer may split into several pieces. This
+    reports the distribution that decides whether the SPM vocab fits the model:
+
+    * **pieces-per-k-mer** — tokens(read) / (len(read) − k + 1). 1.0 means every
+      k-mer stayed whole; the broken char-level fallback gives ≈ k. This is the
+      regression check that the Metaspace fix landed.
+    * **tokens-per-read / tokens-per-pair** — mean/p50/p95/p99/max. The pair
+      figure (with [CLS]/[SEP]) is the real model input; p99 must clear
+      ``max_position_embeddings`` with margin, or the run is truncating signal.
+    * **<unk> coverage** — fraction of real tokens that fell back to ``<unk>``.
+
+    Compare against the Salmon baseline of 271 tokens/pair for a 2×150 bp pair.
+    """
+    set_verbosity(verbosity)
+    tokenizer = load_kmer_tokenizer(tokenizer_path, max_position_embeddings)
+    if not getattr(tokenizer, "is_fast", False):
+        logger.warning(
+            "Tokenizer is not a fast subword tokenizer; fragmentation is 1.0 by "
+            "construction (e.g. the Salmon canonical tokenizer). Gate is trivial."
+        )
+
+    raw_read, tok_k = spm_input_mode(tokenizer)
+    if getattr(tokenizer, "trap_k", None) is not None:
+        k = tok_k  # trust the tokenizer's own k over the CLI default
+
+    # raw_read: feed the raw read (no overlapping k-mer pre-split); else feed
+    # the space-joined k-mers the k-mer tokenizer expects.
+    def _text(seq):
+        return seq if raw_read else kmer_split(k, seq)
+
+    rng = random.Random(seed)
+    r1 = GenomeDataset(builder, file_format).sequences
+    reads2 = GenomeDataset(pair, file_format).sequences if pair is not None else None
+    # Sample over the common range when paired: a sample's mates need not be 1:1
+    # (e.g. R2 filtered separately), and indexing R2 past its end would crash.
+    n = len(r1) if reads2 is None else min(len(r1), len(reads2))
+    idx = rng.sample(range(n), min(sample, n))
+    logger.log(
+        "STAGE",
+        f"[tokenizer:spm_fragmentation] tokenizer={tokenizer_path} "
+        f"mode={'raw-read' if raw_read else 'kmer'} reads={n:,} "
+        f"sampled={len(idx):,} k={k} max_pos={max_position_embeddings}",
+    )
+
+    unk_id = tokenizer.unk_token_id
+    ratios, toks_read, toks_pair = [], [], []
+    total_real, total_unk = 0, 0
+    for i in idx:
+        seq0 = r1[i]
+        ids0 = tokenizer(_text(seq0), add_special_tokens=False)["input_ids"]
+        # kmer mode: tokens per k-mer (1.0 = whole k-mers); raw mode: bases per
+        # token (compression — higher is better, 1.0 = char-level worst case).
+        denom = (len(seq0) if raw_read else max(len(seq0) - k + 1, 0)) or None
+        if denom:
+            ratios.append((len(seq0) / len(ids0)) if raw_read else (len(ids0) / denom))
+        toks_read.append(len(ids0))
+        if reads2 is not None:
+            seq1 = reads2[i]
+            paired = tokenizer(_text(seq0), _text(seq1), add_special_tokens=True)["input_ids"]
+            toks_pair.append(len(paired))
+            real_ids = paired
+        else:
+            real_ids = ids0
+        total_real += len(real_ids)
+        if unk_id is not None:
+            total_unk += sum(1 for t in real_ids if t == unk_id)
+
+    coverage = 100.0 * (1.0 - total_unk / total_real) if total_real else 0.0
+    ratio_label = "bases/token" if raw_read else "pieces/kmer"
+    logger.log("STAGE", f"[tokenizer:spm_fragmentation] {_summarize(ratios, ratio_label)}")
+    logger.log("STAGE", f"[tokenizer:spm_fragmentation] {_summarize(toks_read, 'tokens/read')}")
+    if toks_pair:
+        logger.log(
+            "STAGE", f"[tokenizer:spm_fragmentation] {_summarize(toks_pair, 'tokens/pair')}"
+        )
+    logger.log(
+        "STAGE",
+        f"[tokenizer:spm_fragmentation] coverage={coverage:.2f}% "
+        f"(unk={total_unk:,}/{total_real:,})",
+    )
+
+    budget = toks_pair if toks_pair else toks_read
+    p99 = float(np.percentile(np.asarray(budget, dtype=np.float64), 99))
+    unit = "pair" if toks_pair else "read"
+    if p99 >= max_position_embeddings:
+        logger.error(
+            f"GATE 1 FAIL: p99 tokens/{unit}={p99:.0f} >= max_position_embeddings="
+            f"{max_position_embeddings}; reads are truncating. Lower k, raise "
+            f"max_position_embeddings, or drop overlapping-k-mer pre-splitting."
+        )
+    else:
+        logger.success(
+            f"GATE 1 PASS: p99 tokens/{unit}={p99:.0f} < max_position_embeddings="
+            f"{max_position_embeddings} (margin {max_position_embeddings - p99:.0f})."
+        )
 
 
 class WholeKmerMaskingDataCollator:

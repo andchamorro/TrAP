@@ -63,6 +63,27 @@ done
 
 # Export RUN_CONFIG so every SLURM job inherits it via _common.sh.
 [[ -n "${RUN_CONFIG}" ]] && export RUN_CONFIG
+# Export the SPM opt-in so it reaches EVERY array task (sbatch --export=ALL needs
+# it exported, not just a shell var). Without this, later array tasks tripped the
+# _common.sh guard and died — half the sweep was lost (job 18901316: tasks 4-7).
+[[ -n "${TRAP_SPM_EXPERIMENTAL:-}" ]] && export TRAP_SPM_EXPERIMENTAL
+
+# Fail at submit time (before launching the array) if the run config selects the
+# gated SPM tokenizer without the opt-in — mirrors submit_pipeline.sh so we never
+# submit a doomed array. _common.sh re-checks at job runtime.
+if [[ -n "${RUN_CONFIG}" ]]; then
+    _rc_path="${RUN_CONFIG}"
+    [[ "${_rc_path:0:1}" != "/" ]] && _rc_path="${REPO_ROOT}/${_rc_path}"
+    if [[ -n "${_PY}" && -f "${REPO_ROOT}/scripts/slurm/hpc_config.py" && -f "${_rc_path}" ]]; then
+        eval "$("${_PY}" "${REPO_ROOT}/scripts/slurm/hpc_config.py" --run-vars "${_rc_path}" 2>/dev/null)" || true
+    fi
+    if [[ "${TOKENIZER_ALGORITHM:-}" == "spm" || "${TOKENIZER_NAME:-}" == *.spm ]] \
+        && [[ "${TRAP_SPM_EXPERIMENTAL:-}" != "1" ]]; then
+        echo "error: '${_rc_path}' selects the gated SPM tokenizer." >&2
+        echo "  Set TRAP_SPM_EXPERIMENTAL=1 to opt in, or use config/runs/salmon.yaml." >&2
+        exit 1
+    fi
+fi
 
 [[ -n "${ACCOUNT_OVERRIDE}" ]] && SLURM_ACCOUNT="${ACCOUNT_OVERRIDE}"
 
