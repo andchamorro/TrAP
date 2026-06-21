@@ -274,7 +274,11 @@ with its own finalize job (`35_tune_classification_finalize.slurm`) submitted
 `afterok` the array that writes its config. Feed that into the train stage:
 
 ```bash
-CLS_TRAINER_CONFIG=config/training/classification_final.tuned.json \
+# finalize writes a RUN-NAMESPACED tuned config (CLS_TUNED_OUT), e.g.
+#   config/training/classification_final.gencode.v48.k17.spm.tuned.json
+# so an SPM sweep never overwrites the Salmon one. Feed that exact path back:
+CLS_TRAINER_CONFIG=config/training/classification_final.gencode.v48.k17.spm.tuned.json \
+    TRAP_SPM_EXPERIMENTAL=1 RUN_CONFIG=config/runs/spm.yaml \
     sbatch scripts/slurm/40_classification.slurm
 ```
 

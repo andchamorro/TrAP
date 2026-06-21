@@ -20,8 +20,8 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 import os
-import re
 from pathlib import Path
+import re
 from typing import Callable, Dict, List, Optional, Sequence
 
 from datasets import Dataset, DatasetDict
@@ -130,9 +130,7 @@ def _resolve_fragment_labels(
 # ---------------------------------------------------------------------------
 
 
-def _dominant_label_per_transcript(
-    transcript_ids: List[str], labels: List[int]
-) -> Dict[str, int]:
+def _dominant_label_per_transcript(transcript_ids: List[str], labels: List[int]) -> Dict[str, int]:
     """Map each transcript to the integer label most common among its reads."""
     counts: Dict[str, Counter] = defaultdict(Counter)
     for tid, lbl in zip(transcript_ids, labels):
@@ -203,7 +201,7 @@ def _transcript_level_split(
         n = len(tids)
         name = label_names[lbl_int]
         n_test = max(1, round(n * test_split))
-        n_val = (max(1, round(n * val_split)) if val_split else 0)
+        n_val = max(1, round(n * val_split)) if val_split else 0
         n_train = n - n_test - n_val
 
         if n_train < 1:
@@ -225,8 +223,7 @@ def _transcript_level_split(
         train_set.update(tids[n_test + n_val :])
         log_lines.append(
             f"  {name}: {len(tids)} transcripts → "
-            f"{n_train} train / {n_test} test"
-            + (f" / {n_val} eval" if val_split else "")
+            f"{n_train} train / {n_test} test" + (f" / {n_val} eval" if val_split else "")
         )
 
     # Guard: both train and test must be populated after per-class allocation.
@@ -328,6 +325,7 @@ def _log_tokenizer_stats(
 # ---------------------------------------------------------------------------
 # Fast dataset construction (replaces Dataset.from_generator for large inputs)
 # ---------------------------------------------------------------------------
+
 
 def _dataset_from_generator_fast(gen_fn: "Callable[[], Iterator[Dict]]") -> Dataset:
     """Build a HuggingFace Dataset from a generator ~10–100× faster than
@@ -620,19 +618,24 @@ def masking(
             return out
 
     else:
+        # raw_read SPM tokenizers consume the raw read; legacy/k-mer tokenizers
+        # consume space-joined overlapping k-mers.
+        is_raw = getattr(tokenizer, "trap_raw_read", False)
 
         def tokenize_function(examples):
-            kmers = [kmer_split(k, seq) for seq in examples["sequence"]]
+            texts = (
+                examples["sequence"]
+                if is_raw
+                else [kmer_split(k, seq) for seq in examples["sequence"]]
+            )
             result = tokenizer(
-                text=kmers,
+                text=texts,
                 return_special_tokens_mask=False,
                 truncation=False,
                 verbose=False,
             )
             if tokenizer.is_fast:
-                result["word_ids"] = [
-                    result.word_ids(i) for i in range(len(result["input_ids"]))
-                ]
+                result["word_ids"] = [result.word_ids(i) for i in range(len(result["input_ids"]))]
             return result
 
     remove_cols = [
@@ -806,16 +809,29 @@ def classification(
                 )
 
         else:
+            is_raw = getattr(tokenizer, "trap_raw_read", False)
 
             def tokenize_function(examples):
-                kmers_1 = [kmer_split(k, r) for r in examples["read_1"]]
-                kmers_2 = [kmer_split(k, r) for r in examples["read_2"]]
+                t1 = (
+                    examples["read_1"]
+                    if is_raw
+                    else [kmer_split(k, r) for r in examples["read_1"]]
+                )
+                t2 = (
+                    examples["read_2"]
+                    if is_raw
+                    else [kmer_split(k, r) for r in examples["read_2"]]
+                )
                 return tokenizer(
-                    kmers_1,
-                    kmers_2,
+                    t1,
+                    t2,
                     padding=padding,
                     pad_to_multiple_of=8,
                     truncation=True,
+                    # Emit segment ids (read_1=0, read_2=1) so the classifier sees
+                    # the R1/R2 boundary, matching the Salmon path; fast tokenizers
+                    # otherwise omit token_type_ids and the model defaults to zeros.
+                    return_token_type_ids=True,
                     verbose=False,
                 )
 
@@ -835,14 +851,20 @@ def classification(
                 )
 
         else:
+            is_raw = getattr(tokenizer, "trap_raw_read", False)
 
             def tokenize_function(examples):
-                kmers = [kmer_split(k, seq) for seq in examples["sequence"]]
+                texts = (
+                    examples["sequence"]
+                    if is_raw
+                    else [kmer_split(k, seq) for seq in examples["sequence"]]
+                )
                 return tokenizer(
-                    kmers,
+                    texts,
                     padding=padding,
                     pad_to_multiple_of=8,
                     truncation=True,
+                    return_token_type_ids=True,
                     verbose=False,
                 )
 
