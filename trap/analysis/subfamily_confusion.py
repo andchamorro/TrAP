@@ -31,7 +31,6 @@ import csv
 from pathlib import Path
 import re
 
-from Bio import SeqIO
 from loguru import logger
 import typer
 
@@ -65,20 +64,44 @@ def _age_rank(sf: str):
 
 
 def _read_pairs(r1: str, r2: str, per_subfamily: int, max_scan: int):
-    """Scan paired FASTQ in lockstep; keep up to ``per_subfamily`` reads/subfamily."""
+    """Scan paired FASTQ in lockstep; keep up to ``per_subfamily`` reads/subfamily.
+
+    The build concatenates reads grouped by subfamily, alphabetically, with the
+    huge NEGATIVE block LAST and the abundant ancient L1s (L1M*/L1ME*) first — each
+    block holds far more than ``per_subfamily`` reads. A naive scan cap therefore
+    exhausts inside the ancient blocks and never reaches L1PA*/L1PB/L1PREC2 or
+    NEGATIVE. So scan with a fast 4-line reader and only stop once NEGATIVE (the
+    last block) is sampled — skipping its multi-million-read tail.
+    """
     kept = defaultdict(list)
     counts = defaultdict(int)
-    n = 0
+    n = since_add = 0
     with genome_file_handle(r1) as h1, genome_file_handle(r2) as h2:
-        for rec1, rec2 in zip(SeqIO.parse(h1, "fastq"), SeqIO.parse(h2, "fastq")):
-            n += 1
-            if n > max_scan:
+        while n < max_scan:
+            id1 = h1.readline()
+            s1 = h1.readline()
+            h1.readline()
+            h1.readline()  # R1: '+' and quality
+            h2.readline()
+            s2 = h2.readline()
+            h2.readline()
+            h2.readline()  # R2: id, '+' and quality
+            if not id1 or not s1 or not s2:
                 break
-            sf = _raw_subfamily(str(rec1.id))
+            n += 1
+            tok = id1[1:].split()  # drop leading '@', take id up to first space
+            sf = _raw_subfamily(tok[0]) if tok else "?"
             if counts[sf] >= per_subfamily:
+                since_add += 1
+                # NEGATIVE is the last (multi-million-read) block; once it and
+                # everything before it are sampled, a long no-add run means we are
+                # in its tail — stop rather than scan millions more pairs.
+                if counts.get("NEGATIVE", 0) >= per_subfamily and since_add >= 200_000:
+                    break
                 continue
             counts[sf] += 1
-            kept[sf].append((str(rec1.seq), str(rec2.seq)))
+            since_add = 0
+            kept[sf].append((s1.strip(), s2.strip()))
     return kept
 
 
@@ -91,7 +114,11 @@ def run(
     k: int = typer.Option(17, help="K-mer size (k-mer tokenizers only)."),
     max_position_embeddings: int = typer.Option(128, help="Pad/truncate length."),
     per_subfamily: int = typer.Option(4000, help="Max reads sampled per subfamily."),
-    max_scan: int = typer.Option(4_000_000, help="Cap on FASTQ pairs scanned."),
+    max_scan: int = typer.Option(
+        20_000_000,
+        help="Hard cap on FASTQ pairs scanned (covers the full set; the scan "
+        "self-stops once NEGATIVE is sampled).",
+    ),
     batch_size: int = typer.Option(256),
     out: Path = typer.Option(RESULTS_DIR / "subfamily_confusion.csv"),
 ):
