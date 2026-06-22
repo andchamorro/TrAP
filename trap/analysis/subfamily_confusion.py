@@ -98,7 +98,8 @@ def run(
     import torch
     from transformers import AlbertForSequenceClassification
 
-    from trap.loaders.tokenizer import SalmonKmerTokenizer, load_kmer_tokenizer
+    from trap.loaders.salmon_tokenizer import SalmonKmerTokenizer
+    from trap.loaders.tokenizer import load_kmer_tokenizer
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tokenizer = load_kmer_tokenizer(str(tokenizer_path), max_position_embeddings)
