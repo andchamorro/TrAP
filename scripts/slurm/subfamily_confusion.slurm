@@ -19,11 +19,12 @@
 # Each model is run at its OWN padding: SPM raw-read pairs are ~63 tokens (pad
 # 128); Salmon k-mer pairs are ~271 tokens (pad 280 — 128 would truncate them).
 #
-# Defaults below are overridable by env. The Salmon model dir in particular may
-# carry an lr/epoch suffix from the deploy run (e.g. ...salmon.e12) — set
-# SALMON_MODEL to the exact dir that produced macro-F1 0.664:
-#   SALMON_MODEL=models/albert.l1hs_l1pa2.v48.k17.salmon.e12/final \
+# Model dirs are built as <MODELS_DIR>/<MODEL_CLS>/final (HF save layout). The
+# Salmon deploy run suffixes the class with its lr/epochs, so pass the exact class
+# that produced macro-F1 0.664 via SALMON_MODEL_CLS:
+#   SALMON_MODEL_CLS=albert.l1hs_l1pa2.v48.k17.salmon.lr5e5.e12 \
 #     sbatch scripts/slurm/subfamily_confusion.slurm
+# (SPM_MODEL_CLS / *_TOK_NAME are overridable the same way.)
 
 export TRAP_SPM_EXPERIMENTAL=1                       # to load the gated .spm tokenizer
 export TRAP_VERBOSITY="${TRAP_VERBOSITY:-detailed}"  # else logger.info table is dropped
@@ -37,10 +38,16 @@ R1="${R1:-data/external/l1hs_l1pa2_negative.5x_R1.fq}"
 R2="${R2:-data/external/l1hs_l1pa2_negative.5x_R2.fq}"
 PER_SUBFAMILY="${PER_SUBFAMILY:-4000}"
 
-SPM_MODEL="${SPM_MODEL:-models/albert.l1hs_l1pa2.v48.k17.spm/final}"
-SPM_TOK="${SPM_TOK:-models/tokenizer.gencode.v48.k17.spm}"
-SALMON_MODEL="${SALMON_MODEL:-models/albert.l1hs_l1pa2.v48.k17.salmon/final}"
-SALMON_TOK="${SALMON_TOK:-models/tokenizer.gencode.v48.k17.salmon}"
+# Built as <MODELS_DIR>/<MODEL_CLS>/final and <MODELS_DIR>/<TOK_NAME>.
+SPM_MODEL_CLS="${SPM_MODEL_CLS:-albert.l1hs_l1pa2.v48.k17.spm}"
+SALMON_MODEL_CLS="${SALMON_MODEL_CLS:-albert.l1hs_l1pa2.v48.k17.salmon}"
+SPM_TOK_NAME="${SPM_TOK_NAME:-tokenizer.gencode.v48.k17.spm}"
+SALMON_TOK_NAME="${SALMON_TOK_NAME:-tokenizer.gencode.v48.k17.salmon}"
+
+SPM_MODEL="${MODELS_DIR}/${SPM_MODEL_CLS}/final"
+SPM_TOK="${MODELS_DIR}/${SPM_TOK_NAME}"
+SALMON_MODEL="${MODELS_DIR}/${SALMON_MODEL_CLS}/final"
+SALMON_TOK="${MODELS_DIR}/${SALMON_TOK_NAME}"
 
 echo "[subfamily_confusion] === SPM (raw-read, pad 128) ==="
 python -m trap.analysis.subfamily_confusion \
