@@ -131,7 +131,7 @@ cat "${WORK}/fastq/pos_R1.fq" "${WORK}/fastq/neg_R1.fq" > "${SEQ_R1}"
 cat "${WORK}/fastq/pos_R2.fq" "${WORK}/fastq/neg_R2.fq" > "${SEQ_R2}"
 echo "[seqlabel] R1 -> ${SEQ_R1}"; echo "[seqlabel] R2 -> ${SEQ_R2}"
 echo "[seqlabel] class histogram:"
-grep -hoE '\|[A-Za-z0-9]+$' "${SEQ_R1}" | sort | uniq -c | sort -rn
+grep -hoE '\|[A-Za-z0-9]+$' "${SEQ_R1}" | sort | uniq -c | sort -rn || echo "  (no labelled reads — check the chrom/QNAME steps above)"
 
 # --- minimap2 CROSS-CHECK (sequence label vs the .out label) ---------------
 [[ -f "${CROSSCHECK_LIB}" ]] || CROSSCHECK_LIB="data/external/L19088.1.fa"
