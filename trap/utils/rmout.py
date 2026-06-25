@@ -92,6 +92,24 @@ def resolve_fragment_label(strict_families: List[str], any_overlap: bool) -> str
 # --------------------------------------------------------------------------- #
 # CLI                                                                          #
 # --------------------------------------------------------------------------- #
+def load_chrom_map(assembly_report: str) -> Dict[str, str]:
+    """RefSeq-Accn → UCSC-style-name map from an NCBI ``*_assembly_report.txt``.
+
+    The .out names sequences by RefSeq accession (``NC_000006.12``) but a STAR index
+    is often UCSC-named (``chr6``); the assembly report's tab columns 6 (RefSeq-Accn)
+    and 9 (UCSC-style-name) give the remap. Unmapped UCSC names (``na``) are skipped.
+    """
+    mapping: Dict[str, str] = {}
+    with genome_file_handle(assembly_report) as fh:
+        for line in fh:
+            if line.startswith("#"):
+                continue
+            f = line.rstrip("\n").split("\t")
+            if len(f) >= 10 and f[6] not in ("", "na") and f[9] not in ("", "na"):
+                mapping[f[6]] = f[9]
+    return mapping
+
+
 @app.command("to-bed")
 def to_bed(
     rmout: Path = typer.Option(..., help="RepeatMasker .out(.gz) (LINE1-only is fine)."),
@@ -99,9 +117,15 @@ def to_bed(
     max_div: float = typer.Option(
         100.0, help="Keep instances with %div ≤ this (e.g. 10 for young-only L1)."
     ),
+    chrom_map: Path = typer.Option(
+        None, help="NCBI *_assembly_report.txt → remap .out RefSeq chroms (NC_*) to chr*."
+    ),
 ):
     """Stream a RepeatMasker .out → BED (chrom, start, end, family, div, strand)."""
-    n_in = n_out = 0
+    cmap = load_chrom_map(str(chrom_map)) if chrom_map else {}
+    if cmap:
+        logger.info(f"chrom-map: {len(cmap)} RefSeq→UCSC names from {chrom_map}")
+    n_in = n_out = n_dropped_chrom = 0
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with genome_file_handle(str(rmout)) as fh, out.open("w") as bed:
@@ -113,9 +137,15 @@ def to_bed(
             chrom, start, end, family, div, strand = rec
             if not is_l1(family) or div > max_div:
                 continue
+            if cmap:
+                if chrom not in cmap:
+                    n_dropped_chrom += 1
+                    continue
+                chrom = cmap[chrom]
             bed.write(f"{chrom}\t{start}\t{end}\t{family}\t{div:.1f}\t{strand}\n")
             n_out += 1
-    logger.success(f"wrote {n_out:,} L1 BED intervals (of {n_in:,} parsed) -> {out}")
+    extra = f" ({n_dropped_chrom:,} dropped: chrom not in map)" if n_dropped_chrom else ""
+    logger.success(f"wrote {n_out:,} L1 BED intervals (of {n_in:,} parsed){extra} -> {out}")
 
 
 @app.command("label-fragments")
