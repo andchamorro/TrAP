@@ -17,10 +17,17 @@
 #     POS_COV=8 NEG_COV=2 bash scripts/build_dataset_seqlabel.sh
 set -euo pipefail
 
+# Pull the path vars (L1_CORPUS, GENCODE_FASTA, DATA_EXTERNAL, ...) from _common.sh
+# when run standalone; a slurm wrapper (20_dataset-style) that already sourced it
+# sets L1_CORPUS, so this is skipped there. _common.sh is source-safe (exports only).
+_COMMON="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/slurm/_common.sh"
+[[ -z "${L1_CORPUS:-}" && -f "${_COMMON}" ]] && source "${_COMMON}"
+
 POS_INPUT="${POS_INPUT:-${L1_CORPUS:?set L1_CORPUS or POS_INPUT (L1-overlapping transcripts)}}"
 NEG_INPUT="${NEG_INPUT:-${GENCODE_FASTA:?set GENCODE_FASTA or NEG_INPUT (full transcriptome)}}"
-REF_DIR="${REF_DIR:-data/external/star_index}"
-LINE1_OUT="${LINE1_OUT:?set LINE1_OUT (GRCh38 LINE-1 RepeatMasker .out(.gz))}"
+REF_DIR="${REF_DIR:-${STAR_INDEX:-data/external/star_index}}"
+LINE1_OUT="${LINE1_OUT:-${DATA_EXTERNAL:-data/external}/GCF_000001405.40_GRCh38.p14_rm.LINE1.out.gz}"
+[[ -f "${LINE1_OUT}" ]] || { echo "[seqlabel] ERROR: LINE1_OUT not found: ${LINE1_OUT}" >&2; exit 1; }
 WORK="${WORK:-data/external/dataset_build_seqlabel}"
 THREADS="${THREADS:-${SLURM_CPUS_PER_TASK:-16}}"
 STRICT_FRAC="${STRICT_FRAC:-0.5}"     # min fraction of the READ inside an L1 instance
