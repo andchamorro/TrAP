@@ -5,6 +5,7 @@ import pytest
 from trap.utils.rmout import (
     best_task_class,
     is_l1,
+    load_chrom_map,
     parse_rmout_line,
     resolve_fragment_label,
 )
@@ -66,6 +67,20 @@ def test_emit_labeled_filters_and_tags(tmp_path):
     assert "@frag2/1|" not in o1.read_text()  # unlabelled fragment dropped
     assert o2.read_text().splitlines()[0] == "@frag1/2|L1PA"
     assert o1.read_text().count("@frag") == 2  # frag1 + frag3 kept
+
+
+def test_load_chrom_map(tmp_path):
+    # NCBI assembly_report.txt: col 6 = RefSeq-Accn, col 9 = UCSC-style-name.
+    report = tmp_path / "assembly_report.txt"
+    report.write_text(
+        "# Assembly name: GRCh38.p14\n"
+        "# Sequence-Name\tRole\tMol\tType\tGenBank\tRel\tRefSeq-Accn\tUnit\tLen\tUCSC-name\n"
+        "1\tassembled\t1\tChromosome\tCM000663.2\t=\tNC_000001.11\tPrimary\t248956422\tchr1\n"
+        "6\tassembled\t6\tChromosome\tCM000668.2\t=\tNC_000006.12\tPrimary\t170805979\tchr6\n"
+        "HSCHR1\tunlocalized\t1\tChromosome\tKI270706.1\t=\tNT_187361.1\tUnit\t175055\tna\n"
+    )
+    cmap = load_chrom_map(str(report))
+    assert cmap == {"NC_000001.11": "chr1", "NC_000006.12": "chr6"}  # 'na' UCSC skipped
 
 
 def test_resolve_fragment_label():

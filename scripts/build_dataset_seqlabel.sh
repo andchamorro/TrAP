@@ -28,6 +28,10 @@ NEG_INPUT="${NEG_INPUT:-${GENCODE_FASTA:?set GENCODE_FASTA or NEG_INPUT (full tr
 REF_DIR="${REF_DIR:-${STAR_INDEX:-data/external/star_index}}"
 LINE1_OUT="${LINE1_OUT:-${DATA_EXTERNAL:-data/external}/GCF_000001405.40_GRCh38.p14_rm.LINE1.out.gz}"
 [[ -f "${LINE1_OUT}" ]] || { echo "[seqlabel] ERROR: LINE1_OUT not found: ${LINE1_OUT}" >&2; exit 1; }
+# Remap the .out RefSeq chroms (NC_*) to the STAR genome's chr* via the NCBI report
+# (auto-used if present). Without it, a chrom-name mismatch is caught by the check below.
+CHROM_MAP="${CHROM_MAP:-${DATA_EXTERNAL:-data/external}/GCF_000001405.40_GRCh38.p14_assembly_report.txt}"
+CHROM_MAP_ARG=(); [[ -f "${CHROM_MAP}" ]] && CHROM_MAP_ARG=(--chrom-map "${CHROM_MAP}")
 WORK="${WORK:-data/external/dataset_build_seqlabel}"
 THREADS="${THREADS:-${SLURM_CPUS_PER_TASK:-16}}"
 STRICT_FRAC="${STRICT_FRAC:-0.5}"     # min fraction of the READ inside an L1 instance
@@ -37,18 +41,40 @@ NEG_COV="${NEG_COV:-2}"              # ART coverage for the (large) transcriptom
 ART_LEN="${ART_LEN:-150}"; ART_FRAG_MEAN="${ART_FRAG_MEAN:-500}"
 ART_FRAG_SD="${ART_FRAG_SD:-10}"; ART_SS="${ART_SS:-MSv3}"
 
-L1_R1="${L1_R1:-data/external/l1hs_l1pa2_negative.seqlabel.5x_R1.fq}"
-L1_R2="${L1_R2:-data/external/l1hs_l1pa2_negative.seqlabel.5x_R2.fq}"
+# NB: read OUTPUT paths from SEQ_R1/SEQ_R2 (NOT L1_R1/L1_R2 — _common.sh exports those
+# to the option-A FASTQ, so a ${L1_R1:-default} would clobber the coordinate-label
+# benchmark). Force *seqlabel* names and refuse anything else.
+SEQ_R1="${SEQ_R1:-${DATA_EXTERNAL:-data/external}/l1hs_l1pa2_negative.seqlabel.5x_R1.fq}"
+SEQ_R2="${SEQ_R2:-${DATA_EXTERNAL:-data/external}/l1hs_l1pa2_negative.seqlabel.5x_R2.fq}"
+case "${SEQ_R1}${SEQ_R2}" in
+    *seqlabel*) : ;;
+    *) echo "[seqlabel] ERROR: refusing non-*seqlabel* output (${SEQ_R1}) to protect option-A FASTQ" >&2; exit 1 ;;
+esac
 CROSSCHECK_LIB="${CROSSCHECK_LIB:-data/external/l1_subfamily_consensus.fa}"
 
 mkdir -p "${WORK}"/{bed,pos,neg,fastq}
 
 # --- shared L1 BED (built once) --------------------------------------------
 echo "[seqlabel] RepeatMasker .out → L1 BED (max_div=${MAX_DIV})"
-python -m trap.utils.rmout to-bed --rmout "${LINE1_OUT}" --out "${WORK}/bed/l1.bed" --max-div "${MAX_DIV}"
+python -m trap.utils.rmout to-bed --rmout "${LINE1_OUT}" --out "${WORK}/bed/l1.bed" --max-div "${MAX_DIV}" "${CHROM_MAP_ARG[@]}"
 sort -k1,1 -k2,2n "${WORK}/bed/l1.bed" > "${WORK}/bed/l1.sorted.bed"
 L1BED="${WORK}/bed/l1.sorted.bed"
 : > "${WORK}/bed/empty.txt"
+
+# Fail FAST (before the ~hours of ART+STAR) if the L1 BED chrom names don't match
+# the STAR genome — the RepeatMasker .out is often RefSeq (NC_000006.12) while the
+# index is UCSC (chr6); a mismatch → zero overlaps → garbage all-NEGATIVE labels.
+if [[ -f "${REF_DIR}/chrName.txt" ]]; then
+    _common_chr=$(comm -12 <(cut -f1 "${L1BED}" | sort -u) <(sort -u "${REF_DIR}/chrName.txt") | wc -l)
+    if [[ "${_common_chr}" -eq 0 ]]; then
+        echo "[seqlabel] ERROR: L1 BED chrom names do not match the STAR genome (${REF_DIR})." >&2
+        echo "  BED chroms:  $(cut -f1 "${L1BED}" | sort -u | head -3 | tr '\n' ' ')" >&2
+        echo "  STAR chroms: $(head -3 "${REF_DIR}/chrName.txt" | tr '\n' ' ')" >&2
+        echo "  → remap: rmout to-bed --chrom-map <GCF_..._assembly_report.txt>, or use the chr*-named GFF." >&2
+        exit 1
+    fi
+    echo "[seqlabel] chrom check OK (${_common_chr} shared names with the STAR genome)"
+fi
 
 # _simulate_align <input_fasta> <cov> <subdir>  → echoes the BAM path
 _simulate_align() {
@@ -77,11 +103,11 @@ _emit() {
     if [[ "${mode}" == "pos" ]]; then
         strict="${d}/strict_hits.tsv"
         bedtools intersect -abam "${bam}" -b "${L1BED}" -f "${STRICT_FRAC}" -bed -wb \
-            | awk 'BEGIN{OFS="\t"} {print $4, $(NF-2)}' > "${strict}"
+            | awk 'BEGIN{OFS="\t"} {q=$4; sub(/\/[12]$/,"",q); print q, $(NF-2)}' > "${strict}"
     else
         neg="${d}/negative_qnames.txt"
         bedtools intersect -abam "${bam}" -b "${L1BED}" -v -bed \
-            | awk '{print $4}' | sort -u > "${neg}"
+            | awk '{q=$4; sub(/\/[12]$/,"",q); print q}' | sort -u > "${neg}"
     fi
     python -m trap.utils.rmout label-fragments \
         --strict-hits "${strict}" --negative-qnames "${neg}" --out "${d}/qname_label.tsv"
@@ -101,18 +127,18 @@ NEG_BAM="$(_simulate_align "${NEG_INPUT}" "${NEG_COV}" neg)"
 _emit "${NEG_BAM}" neg "${WORK}/fastq/neg_R1.fq" "${WORK}/fastq/neg_R2.fq" neg
 
 # --- concat (positives first, then NEGATIVE), R1/R2 in sync ----------------
-cat "${WORK}/fastq/pos_R1.fq" "${WORK}/fastq/neg_R1.fq" > "${L1_R1}"
-cat "${WORK}/fastq/pos_R2.fq" "${WORK}/fastq/neg_R2.fq" > "${L1_R2}"
-echo "[seqlabel] R1 -> ${L1_R1}"; echo "[seqlabel] R2 -> ${L1_R2}"
+cat "${WORK}/fastq/pos_R1.fq" "${WORK}/fastq/neg_R1.fq" > "${SEQ_R1}"
+cat "${WORK}/fastq/pos_R2.fq" "${WORK}/fastq/neg_R2.fq" > "${SEQ_R2}"
+echo "[seqlabel] R1 -> ${SEQ_R1}"; echo "[seqlabel] R2 -> ${SEQ_R2}"
 echo "[seqlabel] class histogram:"
-grep -hoE '\|[A-Za-z0-9]+$' "${L1_R1}" | sort | uniq -c | sort -rn
+grep -hoE '\|[A-Za-z0-9]+$' "${SEQ_R1}" | sort | uniq -c | sort -rn
 
 # --- minimap2 CROSS-CHECK (sequence label vs the .out label) ---------------
 [[ -f "${CROSSCHECK_LIB}" ]] || CROSSCHECK_LIB="data/external/L19088.1.fa"
 if command -v minimap2 >/dev/null && [[ -f "${CROSSCHECK_LIB}" ]]; then
     echo "[seqlabel] === minimap2 cross-check vs ${CROSSCHECK_LIB} ==="
     python -m trap.analysis.relabel_by_sequence run \
-        --library "${CROSSCHECK_LIB}" --r1 "${L1_R1}" --r2 "${L1_R2}" \
+        --library "${CROSSCHECK_LIB}" --r1 "${SEQ_R1}" --r2 "${SEQ_R2}" \
         --max-reads "${CROSSCHECK_N:-50000}" --out "results/seqlabel_crosscheck.tsv" \
         || echo "[seqlabel] cross-check FAILED (FASTQ still written)"
 else
