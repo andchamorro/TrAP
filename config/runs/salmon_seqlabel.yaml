@@ -1,0 +1,28 @@
+# Sequence-anchored L1 labels (Option B) — same Salmon canonical k-mer tokenizer as
+# config/runs/salmon.yaml, but the dataset/model names are *.seqlabel* so the
+# coordinate-label (option-A) artifacts are NEVER overwritten. Use for B2-cont
+# preprocessing (reusing 20_dataset.slurm with SKIP_BUILD=1) and the B3 retrain.
+#
+#   B2-cont:  SKIP_BUILD=1 SKIP_MASKING=1 \
+#               L1_R1=data/external/l1hs_l1pa2_negative.seqlabel.5x_R1.fq \
+#               L1_R2=data/external/l1hs_l1pa2_negative.seqlabel.5x_R2.fq \
+#               RUN_CONFIG=config/runs/salmon_seqlabel.yaml sbatch scripts/slurm/20_dataset.slurm
+#   B3:        RUN_CONFIG=config/runs/salmon_seqlabel.yaml sbatch scripts/slurm/40_classification.slurm
+
+extends: default
+
+tokenizer:
+  algorithm: salmon
+  name: tokenizer.gencode.v48.k17.salmon      # SAME tokenizer — only the labels differ
+
+# *.seqlabel names — additive, do not collide with option-A's salmon dataset/model.
+mlm_processing_name: gencode.v48.k17.salmon
+processing_name: gencode.v48.k17.salmon.seqlabel/l1hs_l1pa2
+model_mlm: albert.gencode.v48.k17.salmon
+model_cls: albert.l1hs_l1pa2.v48.k17.salmon.seqlabel
+
+resources:
+  10:
+    time: "01:00:00"
+    cpus: 16
+    mem: 64G
