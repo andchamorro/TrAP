@@ -22,9 +22,15 @@ Heavy step (ART × 45 grid cells). Needs `art_illumina`, `seqkit`, `bedtools`,
 | `gencode.v48.transcripts.fa.gz` (+ a gencode GTF) | chr1 transcripts — the insertion reference |
 
 ```bash
-source scripts/slurm/_common.sh && load_bio_modules && activate_trap   # salmon is in the trap env
-module load SeqKit/2.9.0                  # seqkit from a module (or on PATH)
-bash scripts/sh/generate_synthetic_dataset.sh
+# SLURM array (recommended): a prep job builds the shared inputs once, then a
+# per-cell array (afterok) generates the grid in parallel. Resumable.
+bash scripts/slurm/submit_generate_synthetic.sh
+#   bash scripts/slurm/submit_generate_synthetic.sh --dry-run   # preview the prep→array chain
+
+# or sequentially on one interactive node:
+#   source scripts/slurm/_common.sh && load_bio_modules && activate_trap   # salmon is in the trap env
+#   module load SeqKit/2.9.0                                               # seqkit from a module
+#   bash scripts/sh/generate_synthetic_dataset.sh
 ```
 
 Outputs to `data/ref/GRCh38.p14.genome.chr1.withdel/`:
