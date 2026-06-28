@@ -245,8 +245,11 @@ each method's recovered per-locus abundance is regressed (R²) against the known
 ```bash
 # Inputs: GRCh38.p14.genome.fa.gz, GCF_..._rm.LINE1.promoter.bed (full-length L1 ≈6 kb),
 # gencode.v48.transcripts.fa.gz (+ gencode GTF for the chr1 subset).
-source scripts/slurm/_common.sh && load_bio_modules && activate_trap
-bash scripts/sh/generate_synthetic_dataset.sh        # → data/ref/...chr1.withdel/ (art/, *.bed, l1_synthetic.Index)
+# SLURM array (prep job → per-cell array, afterok, resumable):
+bash scripts/slurm/submit_generate_synthetic.sh      # → data/ref/...chr1.withdel/ (art/, *.bed, l1_synthetic.Index)
+# or sequentially on one node:
+#   source scripts/slurm/_common.sh && load_bio_modules && activate_trap
+#   module load SeqKit/2.9.0 && bash scripts/sh/generate_synthetic_dataset.sh
 ```
 
 The grid is insertion level 2⁵–2¹³ × deletion probability {0–0.1} (45 samples), inserts are

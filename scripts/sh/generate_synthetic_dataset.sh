@@ -54,19 +54,27 @@ fi
 [[ -f "${GENOME_FA}.fai" ]] || samtools faidx "${GENOME_FA}"
 
 # --- 1. full-length L1 elements (insert + salmon ref) ----------------------
-echo "[gen] (1) full-length L1 elements from ${PROMOTER_BED} (${L1_MIN_LEN}-${L1_MAX_LEN} bp)"
-awk -v lo="${L1_MIN_LEN}" -v hi="${L1_MAX_LEN}" 'BEGIN{OFS="\t"}
-     ($3-$2)>=lo && ($3-$2)<=hi {print}' "${PROMOTER_BED}" > "${WORK}/l1_fulllength.bed"
+# Steps 0–3 are idempotent (skip if the output exists) so parallel array workers
+# reuse the shared inputs a prep job built; FORCE_PREP=1 rebuilds them.
 L1_FASTA="${WORK}/l1_fulllength.fa"
-bedtools getfasta -nameOnly -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
-    | sed '/^>/ s/(.)$//' > "${L1_FASTA}"
+if [[ ! -s "${L1_FASTA}" || "${FORCE_PREP:-0}" == "1" ]]; then
+    echo "[gen] (1) full-length L1 elements from ${PROMOTER_BED} (${L1_MIN_LEN}-${L1_MAX_LEN} bp)"
+    awk -v lo="${L1_MIN_LEN}" -v hi="${L1_MAX_LEN}" 'BEGIN{OFS="\t"}
+         ($3-$2)>=lo && ($3-$2)<=hi {print}' "${PROMOTER_BED}" > "${WORK}/l1_fulllength.bed"
+    bedtools getfasta -nameOnly -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
+        | sed '/^>/ s/(.)$//' > "${L1_FASTA}"
+fi
 echo "[gen]     $(grep -c '^>' "${L1_FASTA}") full-length L1 elements"
 
 # --- 2. salmon index from the L1 elements ----------------------------------
 L1_INDEX="${OUTPUT_DIR}/l1_synthetic.Index"
-echo "[gen] (2) salmon index → ${L1_INDEX}"
-salmon index -t "${L1_FASTA}" -i "${L1_INDEX}" -k 31 2>/dev/null \
-    || echo "[gen]   WARNING: salmon index failed (salmon on PATH?) — build it before quant"
+if [[ ! -f "${L1_INDEX}/info.json" || "${FORCE_PREP:-0}" == "1" ]]; then
+    echo "[gen] (2) salmon index → ${L1_INDEX}"
+    salmon index -t "${L1_FASTA}" -i "${L1_INDEX}" -k 31 2>/dev/null \
+        || echo "[gen]   WARNING: salmon index failed (salmon on PATH?) — build it before quant"
+else
+    echo "[gen] (2) salmon index exists → ${L1_INDEX}"
+fi
 
 # --- 3. chr1 transcripts (insertion reference) -----------------------------
 if [[ -z "${CHR1_TRANSCRIPTS}" ]]; then
@@ -85,6 +93,11 @@ if [[ -z "${CHR1_TRANSCRIPTS}" ]]; then
     fi
 fi
 echo "[gen]     reference: $(grep -c '^>' "${CHR1_TRANSCRIPTS}") ${CHR} transcripts"
+
+if [[ "${PREP_ONLY:-0}" == "1" ]]; then
+    echo "[gen] PREP_ONLY — shared inputs ready (L1 elements, salmon index, ${CHR} transcripts); skipping grid"
+    exit 0
+fi
 
 # --- 4. grid: insert L1 → ART ----------------------------------------------
 # SKIP_EXISTING=1 (default) resumes: a cell whose gzipped reads already exist is skipped.
