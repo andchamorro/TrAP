@@ -27,8 +27,9 @@ export TRAP_VERBOSITY="${TRAP_VERBOSITY:-detailed}"
 source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"
 load_gpu_modules
 activate_trap
+# salmon is provided by the trap conda env (activate_trap); seqkit from a module.
 module load "${SEQKIT_MODULE:-SeqKit/2.9.0}" 2>/dev/null || echo "[synval] seqkit module not loaded — must be on PATH"
-module load "${SALMON_MODULE:-Salmon}" 2>/dev/null || echo "[synval] salmon module not loaded — must be on PATH"
+command -v salmon >/dev/null || echo "[synval] WARNING: salmon not on PATH — is the trap env active?"
 
 # --- sample + paths --------------------------------------------------------
 CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"

@@ -9,8 +9,8 @@
 #
 # Heavy (ART × 45 cells) → run on a COMPUTE NODE with bio tools:
 #   art_illumina, seqkit, bedtools, samtools, salmon, python(BioPython).
-#   source scripts/slurm/_common.sh && load_bio_modules && activate_trap
-#   module load SeqKit/2.9.0 Salmon  # (or have them on PATH)
+#   source scripts/slurm/_common.sh && load_bio_modules && activate_trap   # salmon is in the env
+#   module load SeqKit/2.9.0  # (or have seqkit on PATH)
 #   bash scripts/sh/generate_synthetic_dataset.sh
 #
 # NB on reuse: the legacy generator set no seed, so this is a NEW (seeded, reproducible)
