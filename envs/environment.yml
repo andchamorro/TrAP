@@ -47,6 +47,7 @@ dependencies:
   # ---- bioinformatics ----
   - biopython
   - pysam
+  - salmon
 
   # ---- performance / new pipeline deps ----
   - polars
