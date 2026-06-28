@@ -87,24 +87,34 @@ fi
 echo "[gen]     reference: $(grep -c '^>' "${CHR1_TRANSCRIPTS}") ${CHR} transcripts"
 
 # --- 4. grid: insert L1 → ART ----------------------------------------------
+# SKIP_EXISTING=1 (default) resumes: a cell whose gzipped reads already exist is skipped.
+SKIP_EXISTING="${SKIP_EXISTING:-1}"
+n_done=0; n_skip=0
 for power in ${POWERS}; do
   for dp in ${DELPROBS}; do
     suffix="insert_level_${power}_delprob_${dp}"
     base="GRCh38.p14.${CHR}.${suffix}"
     mod_fa="${OUTPUT_DIR}/${base}.fa"
     ins_bed="${OUTPUT_DIR}/${base}.bed"
+    art_prefix="${OUTPUT_DIR}/art/${base}.pair.${FCOV}x"
+    if [[ "${SKIP_EXISTING}" == "1" && -s "${art_prefix}1.fq.gz" && -s "${art_prefix}2.fq.gz" ]]; then
+        echo "[gen] (4) ${suffix}: SKIP (reads exist)"; n_skip=$((n_skip + 1)); continue
+    fi
     echo "[gen] (4) ${suffix}: insert 2^${power} L1 (del_prob=${dp})"
     python "${PYDIR}/generate_synthetic_dataset.py" \
         --transcripts "${CHR1_TRANSCRIPTS}" --l1-elements "${L1_FASTA}" \
         --power "${power}" --del-prob "${dp}" --seed "${SEED}" \
         --out-fasta "${mod_fa}" --out-bed "${ins_bed}"
-    art_prefix="${OUTPUT_DIR}/art/${base}.pair.${FCOV}x"
     art_illumina -sam -na -i "${mod_fa}" -p -l "${ART_LEN}" -f "${FCOV}" \
         -m "${ART_MFLEN}" -s "${ART_SDEV}" -ss "${ART_SS}" -o "${art_prefix}" \
         > "${art_prefix}.art.log" 2>&1
     gzip -f "${art_prefix}1.fq" "${art_prefix}2.fq"
+    # The modified-transcript FASTA is large and only needed for ART — drop it unless kept.
+    [[ "${KEEP_FASTA:-0}" == "1" ]] || rm -f "${mod_fa}"
+    n_done=$((n_done + 1))
   done
 done
+echo "[gen] grid: ${n_done} generated, ${n_skip} skipped"
 
 echo "[gen] done → ${OUTPUT_DIR}  (art/*.fq.gz, *.bed, l1_synthetic.Index)"
 echo "[gen] next: validate one sample — POWER=8 DELPROB=0.025 L1_INDEX=${L1_INDEX} sbatch scripts/slurm/synthetic_validation.slurm"
