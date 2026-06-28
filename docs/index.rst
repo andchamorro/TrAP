@@ -34,6 +34,7 @@ nucleotide distribution of L1 sequences directly — no reference alignment requ
    guides/hpc
    guides/hyperparameter_tuning
    guides/reproduction
+   guides/synthetic_validation
 
 .. toctree::
    :maxdepth: 2

@@ -234,6 +234,37 @@ python -m trap.modeling.postprocessing filter_ids \
 > aggregate to chromosome-level distributions that correlate with 5′RACE long-read references
 > (R² = 0.91 for the ALBERT + Salmon pipeline) and with BWA alignment counts (r = 0.93 for L1HS).
 
+### 7. Validate end-to-end (synthetic abundance benchmark)
+
+A ground-truth benchmark for the full **filter → salmon** pipeline: full-length L1 elements
+are inserted into chr1 GENCODE transcripts at known levels, reads are simulated with ART, and
+each method's recovered per-locus abundance is regressed (R²) against the known truth. The
+**generation** step (run once, on a compute node — needs `art_illumina`, `seqkit`, `bedtools`,
+`samtools`, `salmon`, BioPython) sources everything from `data/external`:
+
+```bash
+# Inputs: GRCh38.p14.genome.fa.gz, GCF_..._rm.LINE1.promoter.bed (full-length L1 ≈6 kb),
+# gencode.v48.transcripts.fa.gz (+ gencode GTF for the chr1 subset).
+source scripts/slurm/_common.sh && load_bio_modules && activate_trap
+bash scripts/sh/generate_synthetic_dataset.sh        # → data/ref/...chr1.withdel/ (art/, *.bed, l1_synthetic.Index)
+```
+
+The grid is insertion level 2⁵–2¹³ × deletion probability {0–0.1} (45 samples), inserts are
+**deterministic** (fixed `--seed`, so the dataset is reproducible). Then run the classifier
+**filter → salmon** path per sample and compute the comparison (see
+**[`.trap/plans/synthetic-e2e-validation.md`](.trap/plans/synthetic-e2e-validation.md)**):
+
+```bash
+# one sample, then fan out over the grid:
+POWER=8 DELPROB=0.025 sbatch scripts/slurm/synthetic_validation.slurm
+```
+
+> [!NOTE]
+> The legacy generator set no random seed, so this re-creation is a **new, seeded draw**; compare
+> methods at the **R²-vs-Simulated** level (stable across draws). Figures migrate to R/ggplot
+> (notebook `5.02`, consuming `results/synthetic_validation/*.csv`). See
+> [`docs/guides/synthetic_validation.md`](docs/guides/synthetic_validation.md).
+
 ## Reproduce on HPC (Grace)
 
 The full chain is orchestrated as SLURM jobs. See **[`scripts/slurm/README.md`](scripts/slurm/README.md)**
