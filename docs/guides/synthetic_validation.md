@@ -49,9 +49,13 @@ generator, which set none.
 
 ## 2. Run the filter → salmon validation
 
-Per sample: TrAP `predict.processing_dataset` → `predict.quantify` →
-`postprocessing.filter_ids` (`P(NEGATIVE)<τ`) → `seqkit grep` → `salmon quant`
-against `l1_synthetic.Index`:
+Per sample: TrAP `predict.processing-dataset` → `predict.quantify` →
+`postprocessing.filter-ids` (`P(NEGATIVE)<τ`) → `seqkit grep` → `salmon quant`
+against `l1_synthetic.Index`. The reads are parsed twice (tokenise + extract), so the
+validation **prefers uncompressed `.fq`** for speed: it uses `…pair.5x{1,2}.fq` if
+present, else decompresses `.fq.gz` once into `WORK` (`DECOMPRESS=1`, default; set
+`DECOMPRESS=0` to stream the `.gz`). Generate uncompressed reads up front with
+`GZIP=0` to skip decompression entirely.
 
 ```bash
 POWER=8 DELPROB=0.025 sbatch scripts/slurm/synthetic_validation.slurm   # one sample

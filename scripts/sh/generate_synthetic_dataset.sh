@@ -100,8 +100,12 @@ if [[ "${PREP_ONLY:-0}" == "1" ]]; then
 fi
 
 # --- 4. grid: insert L1 → ART ----------------------------------------------
-# SKIP_EXISTING=1 (default) resumes: a cell whose gzipped reads already exist is skipped.
+# SKIP_EXISTING=1 (default) resumes: a cell whose reads already exist is skipped.
+# GZIP=1 (default) gzips the reads; GZIP=0 leaves them uncompressed (.fq) for faster
+# downstream validation (the validation reads them twice).
 SKIP_EXISTING="${SKIP_EXISTING:-1}"
+GZIP="${GZIP:-1}"
+[[ "${GZIP}" == "1" ]] && RDEXT=".fq.gz" || RDEXT=".fq"
 n_done=0; n_skip=0
 for power in ${POWERS}; do
   for dp in ${DELPROBS}; do
@@ -110,7 +114,7 @@ for power in ${POWERS}; do
     mod_fa="${OUTPUT_DIR}/${base}.fa"
     ins_bed="${OUTPUT_DIR}/${base}.bed"
     art_prefix="${OUTPUT_DIR}/art/${base}.pair.${FCOV}x"
-    if [[ "${SKIP_EXISTING}" == "1" && -s "${art_prefix}1.fq.gz" && -s "${art_prefix}2.fq.gz" ]]; then
+    if [[ "${SKIP_EXISTING}" == "1" && -s "${art_prefix}1${RDEXT}" && -s "${art_prefix}2${RDEXT}" ]]; then
         echo "[gen] (4) ${suffix}: SKIP (reads exist)"; n_skip=$((n_skip + 1)); continue
     fi
     echo "[gen] (4) ${suffix}: insert 2^${power} L1 (del_prob=${dp})"
@@ -121,7 +125,7 @@ for power in ${POWERS}; do
     art_illumina -sam -na -i "${mod_fa}" -p -l "${ART_LEN}" -f "${FCOV}" \
         -m "${ART_MFLEN}" -s "${ART_SDEV}" -ss "${ART_SS}" -o "${art_prefix}" \
         > "${art_prefix}.art.log" 2>&1
-    gzip -f "${art_prefix}1.fq" "${art_prefix}2.fq"
+    [[ "${GZIP}" == "1" ]] && gzip -f "${art_prefix}1.fq" "${art_prefix}2.fq"
     # The modified-transcript FASTA is large and only needed for ART — drop it unless kept.
     [[ "${KEEP_FASTA:-0}" == "1" ]] || rm -f "${mod_fa}"
     n_done=$((n_done + 1))
