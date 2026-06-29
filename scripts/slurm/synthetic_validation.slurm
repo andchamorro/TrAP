@@ -47,16 +47,33 @@ L1_INDEX="${L1_INDEX:-data/ref/GRCh38.p14.genome.chr1.withdel/l1_synthetic.Index
 SUFFIX="insert_level_${POWER}_delprob_${DELPROB}"
 REFDIR="${REFDIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel}"
 BASE="GRCh38.p14.${CHR}.${SUFFIX}.pair.${FCOV}x"
-R1="${REFDIR}/art/${BASE}1.fq.gz"
-R2="${REFDIR}/art/${BASE}2.fq.gz"
 WORK="${WORK:-${SCRATCH:-/tmp}/synthetic_val/${BASE}}"
 SALMON_OUT="${REFDIR}/salmon/filtered_seqlabel/${BASE}"
-
-for f in "${R1}" "${R2}"; do
-    [[ -f "${f}" ]] || { echo "[synval] ERROR: missing reads ${f}" >&2; exit 1; }
-done
 mkdir -p "${WORK}" "${SALMON_OUT}"
-echo "[synval] sample=${BASE} tau=${TAU} model=${SEQ_MODEL}"
+
+# Resolve paired reads, preferring UNCOMPRESSED .fq (the reads are parsed twice — for
+# tokenise + extract — so avoiding gunzip is a real speedup). Fall back to .fq.gz; with
+# DECOMPRESS=1 (default) a gzipped input is expanded once into WORK so neither pass pays
+# repeated gunzip. DECOMPRESS=0 streams the .gz directly.
+DECOMPRESS="${DECOMPRESS:-1}"
+resolve_reads() {  # $1 = mate (1|2) → prints the read path to use
+    local mate="$1"
+    local plain="${REFDIR}/art/${BASE}${mate}.fq"
+    local gz="${REFDIR}/art/${BASE}${mate}.fq.gz"
+    if [[ -s "${plain}" ]]; then printf '%s' "${plain}"
+    elif [[ -s "${gz}" ]]; then
+        if [[ "${DECOMPRESS}" == "1" ]]; then
+            local out="${WORK}/reads_${mate}.fq"
+            [[ -s "${out}" ]] || gzip -dc "${gz}" > "${out}"
+            printf '%s' "${out}"
+        else printf '%s' "${gz}"; fi
+    fi
+}
+R1="$(resolve_reads 1)"; R2="$(resolve_reads 2)"
+for f in "${R1}" "${R2}"; do
+    [[ -n "${f}" && -s "${f}" ]] || { echo "[synval] ERROR: missing reads for ${BASE} (looked for .fq / .fq.gz)" >&2; exit 1; }
+done
+echo "[synval] sample=${BASE} tau=${TAU} model=${SEQ_MODEL} reads=${R1##*/}"
 
 # --- 1. tokenize the paired reads (salmon tokenizer) -----------------------
 echo "[synval] (1) processing_dataset → ${WORK}/short_reads/tokenized"
@@ -86,13 +103,14 @@ sed 's,/[12]$,,' "${WORK}/keep_ids.txt" | sort -u > "${WORK}/keep_base.txt"
 sed 's,$,/1,' "${WORK}/keep_base.txt" > "${WORK}/keep_r1.txt"
 sed 's,$,/2,' "${WORK}/keep_base.txt" > "${WORK}/keep_r2.txt"
 echo "[synval] (4) seqkit grep — $(wc -l < "${WORK}/keep_base.txt") fragments kept"
-seqkit grep -f "${WORK}/keep_r1.txt" "${R1}" -o "${WORK}/filtered_1.fq.gz"
-seqkit grep -f "${WORK}/keep_r2.txt" "${R2}" -o "${WORK}/filtered_2.fq.gz"
+# filtered reads kept uncompressed — salmon reads them once, no gzip overhead.
+seqkit grep -f "${WORK}/keep_r1.txt" "${R1}" -o "${WORK}/filtered_1.fq"
+seqkit grep -f "${WORK}/keep_r2.txt" "${R2}" -o "${WORK}/filtered_2.fq"
 
 # --- 5. salmon quant on the filtered reads ---------------------------------
 echo "[synval] (5) salmon quant → ${SALMON_OUT}"
 salmon quant -q -i "${L1_INDEX}" -l A \
-    -1 "${WORK}/filtered_1.fq.gz" -2 "${WORK}/filtered_2.fq.gz" \
+    -1 "${WORK}/filtered_1.fq" -2 "${WORK}/filtered_2.fq" \
     --validateMappings -o "${SALMON_OUT}" --threads "${SLURM_CPUS_PER_TASK}" \
     || { echo "[synval] salmon FAILED"; exit 1; }
 

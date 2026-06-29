@@ -23,7 +23,8 @@
 #   sbatch scripts/slurm/generate_synthetic.slurm                         # array (assumes prep done)
 #
 # Options (env): POWERS, DELPROBS, FCOV, SEED, L1_MIN_LEN, L1_MAX_LEN, CHR, OUTPUT_DIR,
-#   CHR1_TRANSCRIPTS, GENCODE_GTF, SKIP_EXISTING, KEEP_FASTA, PREP_ONLY, FORCE_PREP, DRY_RUN.
+#   CHR1_TRANSCRIPTS, GENCODE_GTF, SKIP_EXISTING, KEEP_FASTA, PREP_ONLY, FORCE_PREP, DRY_RUN,
+#   GZIP (1=gzip reads; 0=leave .fq uncompressed for faster validation).
 # If you override POWERS/DELPROBS, set --array to match the cell count (the submit
 # wrapper computes it for you).
 
