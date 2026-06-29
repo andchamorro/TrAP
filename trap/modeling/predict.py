@@ -264,8 +264,11 @@ def processing_dataset(
     break_fn = (lambda seq: break_long_read(seq, rng=fragmentation_rng)) if is_long else None
 
     # --- build generator ---
-    suffix = "".join(input_file.suffixes)
-    if suffix in (".fq.gz", ".fastq.gz", ".fq.bgz", ".fastq.bgz", ".fq", ".fastq"):
+    # Detect format by the filename ending, not Path.suffixes: bioinformatics names
+    # carry dots in the stem (e.g. ...delprob_0.025.pair.5x1.fq.gz), which would make
+    # "".join(suffixes) collect every segment and never match.
+    name = input_file.name.lower()
+    if name.endswith((".fq.gz", ".fastq.gz", ".fq.bgz", ".fastq.bgz", ".fq", ".fastq")):
         if pair_file is not None:
             # Paired-end FASTQ (hot path) — raw sequences, no k-mer split yet
             def generator_from_iterator():
@@ -306,7 +309,7 @@ def processing_dataset(
                             "id": read_id,
                         }
 
-    elif suffix in (".sam", ".bam", ".cram"):
+    elif name.endswith((".sam", ".bam", ".cram")):
         raw_alignments = SAMDataset(input_file)
 
         def generator_from_iterator():
@@ -322,7 +325,7 @@ def processing_dataset(
                     yield {"r1_seq": standardization(seq), "r2_seq": "", "id": read_id}
 
     else:
-        raise ValueError(f"Unsupported file format: {suffix}")
+        raise ValueError(f"Unsupported file format: {input_file.name}")
 
     logger.info("Building dataset from generator")
     raw_dataset = Dataset.from_generator(generator_from_iterator)
