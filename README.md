@@ -225,7 +225,7 @@ python -m trap.modeling.quantify run \
     --output-path reports/quantify/sample --k 17 --batch-size 64
 
 # Keep reads with L1 presence (low NEGATIVE score)
-python -m trap.modeling.postprocessing filter_ids \
+python -m trap.modeling.postprocessing filter-ids \
     --fastq sample_R1.fastq.gz --output-path reports/quantify/sample --threshold 0.5
 ```
 
