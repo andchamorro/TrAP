@@ -339,9 +339,16 @@ def processing_dataset(
 
     if pretrained_tokenizer_name is not None:
         logger.info("Loading tokenizer")
-        tokenizer = load_kmer_tokenizer(
-            os.path.join(MODELS_DIR, pretrained_tokenizer_name, "final")
-        )
+        # Resolve the tokenizer dir flexibly: an explicit path, a standalone tokenizer
+        # saved at models/<name>/, or a model dir bundling it at models/<name>/final/.
+        tok_arg = str(pretrained_tokenizer_name)
+        candidates = [
+            tok_arg,                                       # explicit path
+            os.path.join(MODELS_DIR, tok_arg, "final"),    # model dir bundling a tokenizer
+            os.path.join(MODELS_DIR, tok_arg),             # standalone tokenizer models/<name>/
+        ]
+        tok_path = next((c for c in candidates if os.path.isdir(c)), candidates[1])
+        tokenizer = load_kmer_tokenizer(tok_path)
 
         _k = k  # capture for closure
 
