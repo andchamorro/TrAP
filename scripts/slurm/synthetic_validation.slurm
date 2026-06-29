@@ -60,7 +60,7 @@ echo "[synval] sample=${BASE} tau=${TAU} model=${SEQ_MODEL}"
 
 # --- 1. tokenize the paired reads (salmon tokenizer) -----------------------
 echo "[synval] (1) processing_dataset → ${WORK}/short_reads/tokenized"
-python -m trap.modeling.predict processing_dataset \
+python -m trap.modeling.predict processing-dataset \
     --input-file "${R1}" --pair-file "${R2}" --output-path "${WORK}" \
     --k "${K}" --pretrained-tokenizer-name "${MODELS_DIR}/${TOK}" \
     || { echo "[synval] processing_dataset FAILED"; exit 1; }
@@ -74,7 +74,7 @@ python -m trap.modeling.predict quantify \
 
 # --- 3. filter: keep reads with P(NEGATIVE) < TAU --------------------------
 echo "[synval] (3) filter_ids (P(NEGATIVE) < ${TAU})"
-python -m trap.modeling.postprocessing filter_ids \
+python -m trap.modeling.postprocessing filter-ids \
     --output-path "${WORK}" --threshold "${TAU}" \
     --fastq "${R1}" --output-filtered-ids "${WORK}/keep_ids.txt" \
     || { echo "[synval] filter_ids FAILED"; exit 1; }
