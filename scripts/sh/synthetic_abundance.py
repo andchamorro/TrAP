@@ -26,8 +26,20 @@ import re
 from collections import Counter
 
 
-def load_simulated(bed_path: str) -> Counter:
-    """Per-element insertion count from an insertion BED (col4 = element key)."""
+def load_simulated_counts(tsv_path: str) -> dict:
+    """Per-element copy count from a model-2 counts TSV (``l1_id\\tcount``)."""
+    counts = {}
+    with open(tsv_path) as fh:
+        next(fh, None)  # header
+        for line in fh:
+            f = line.rstrip("\n").split("\t")
+            if len(f) >= 2:
+                counts[f[0]] = int(f[1])
+    return counts
+
+
+def load_simulated_bed(bed_path: str) -> Counter:
+    """Per-element insertion count from a model-1 insertion BED (col4 = element key)."""
     counts: Counter = Counter()
     with open(bed_path) as fh:
         for line in fh:
@@ -50,36 +62,47 @@ def load_salmon(quant_sf: str) -> dict:
 
 
 def subfamily(key: str) -> str:
-    """``L1PA6.1::chr1:100-6100`` → ``L1PA6`` (subfamily, dropping the promoter flag)."""
+    """Subfamily token from an element key.
+
+    ``L1PA6.1::chr1:100-6100`` → ``L1PA6`` (RM source). A bare L1Base ``UID107`` has
+    no subfamily encoded, so it returns itself (per-element == per-subfamily there).
+    """
     return key.split("::", 1)[0].rsplit(".", 1)[0]
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--refdir", default="data/ref/GRCh38.p14.genome.chr1.withdel")
+    _src = os.environ.get("L1_SOURCE", "l1base")
+    ap.add_argument("--refdir",
+                    default=os.environ.get("REFDIR", f"data/ref/GRCh38.p14.genome.chr1.withdel.{_src}"))
     ap.add_argument("--chr", default="chr1")
     ap.add_argument("--fcov", default="5")
     ap.add_argument("--out", default="results/synthetic_validation/abundance.csv")
     args = ap.parse_args()
 
-    bed_re = re.compile(r"insert_level_(\d+)_delprob_([0-9.]+)\.bed$")
     rows, cells = [], 0
-    beds = sorted(glob.glob(f"{args.refdir}/GRCh38.p14.{args.chr}.insert_level_*_delprob_*.bed"))
-    for bed in beds:
-        m = bed_re.search(bed)
-        if not m:
+    # Iterate over the validation outputs; pair each with its ground truth — a model-2
+    # counts TSV (preferred) or a model-1 insertion BED.
+    qdirs = sorted(glob.glob(f"{args.refdir}/salmon/filtered_seqlabel/*/"))
+    for qdir in qdirs:
+        base = os.path.basename(qdir.rstrip("/"))
+        m = re.search(r"insert_level_(\d+)_delprob_([0-9.]+)", base)
+        quant_sf = os.path.join(qdir, "quant.sf")
+        if not m or not os.path.isfile(quant_sf):
             continue
         power, dp = m.group(1), m.group(2)
-        base = f"GRCh38.p14.{args.chr}.insert_level_{power}_delprob_{dp}.pair.{args.fcov}x"
-        quant_sf = f"{args.refdir}/salmon/filtered_seqlabel/{base}/quant.sf"
-        if not os.path.isfile(quant_sf):
-            print(f"[abundance] WARN: no quant.sf for {base} — skipping")
+        gt = f"{args.refdir}/GRCh38.p14.{args.chr}.insert_level_{power}_delprob_{dp}"
+        if os.path.isfile(f"{gt}.counts.tsv"):
+            sim = load_simulated_counts(f"{gt}.counts.tsv")
+        elif os.path.isfile(f"{gt}.bed"):
+            sim = load_simulated_bed(f"{gt}.bed")
+        else:
+            print(f"[abundance] WARN: no ground truth for {base} — skipping")
             continue
-        sim = load_simulated(bed)
         est = load_salmon(quant_sf)
         cells += 1
         # Element set = the salmon index targets (quant.sf); Simulated is 0 where the
-        # element was never inserted, so the regression includes true negatives.
+        # element was never expressed, so the regression includes true negatives.
         for key, num_reads in est.items():
             rows.append((power, dp, key, subfamily(key), sim.get(key, 0), num_reads))
 

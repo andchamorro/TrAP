@@ -38,14 +38,13 @@ TAU="${TAU:-0.5}"                                  # keep reads with P(NEGATIVE)
 SEQ_MODEL="${SEQ_MODEL:-albert.l1hs_l1pa2.v48.k17.salmon.seqlabel}"
 TOK="${TOK:-tokenizer.gencode.v48.k17.salmon}"
 K="${K:-17}"
-# salmon index built by generate_synthetic_dataset.sh from the SAME full-length L1
-# elements that were inserted (so quant targets == ground-truth loci). The seqlabel
-# AlbertSalmon column must use this index; legacy results (different element set) are
-# compared at the R²-vs-Simulated method level, not per-locus.
-L1_INDEX="${L1_INDEX:-data/ref/GRCh38.p14.genome.chr1.withdel/l1_synthetic.Index}"
-
+# Dataset dir is suffixed by the L1 source (l1base / rm) so benchmarks coexist.
+L1_SOURCE="${L1_SOURCE:-l1base}"
 SUFFIX="insert_level_${POWER}_delprob_${DELPROB}"
-REFDIR="${REFDIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel}"
+REFDIR="${REFDIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}}"
+# salmon index built by generate_synthetic_dataset.sh from the SAME L1 elements that were
+# expressed (so quant targets == ground-truth elements).
+L1_INDEX="${L1_INDEX:-${REFDIR}/l1_synthetic.Index}"
 BASE="GRCh38.p14.${CHR}.${SUFFIX}.pair.${FCOV}x"
 WORK="${WORK:-${SCRATCH:-/tmp}/synthetic_val/${BASE}}"
 SALMON_OUT="${REFDIR}/salmon/filtered_seqlabel/${BASE}"

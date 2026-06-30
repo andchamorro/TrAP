@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import random
+from collections import Counter
 from pathlib import Path
 
 from Bio import SeqIO
@@ -140,41 +141,101 @@ def simulate_insertions(reference_records, l1_records, insertions_count, rng,
     return modified, bed_rows
 
 
+def simulate_l1_transcript(l1_seq, rng, del_prob=0.1, mutation_prob=0.01):
+    """One expressed full-length L1 transcript copy.
+
+    Models autonomous expression of an intact L1: the element is transcribed
+    full-length in its sense orientation, perturbed only by an optional internal
+    deletion (prob ``del_prob``) and point mutations. No TSD and no 5'-truncation —
+    those are *genomic-insertion* artifacts, not transcriptomic ones.
+    """
+    seq = l1_seq
+    if rng.random() < del_prob and len(seq) > 1:
+        ds = rng.randint(0, len(seq) - 1)
+        de = rng.randint(ds, len(seq) - 1)
+        seq = seq[:ds] + seq[de:]
+    if mutation_prob > 0:
+        bases = list(str(seq))
+        for i in range(len(bases)):
+            if rng.random() < mutation_prob:
+                bases[i] = rng.choice(["A", "T", "C", "G"])
+        seq = Seq("".join(bases))
+    return seq
+
+
+def simulate_transcript_pool(l1_records, n_copies, rng, del_prob=0.1, mutation_prob=0.01):
+    """Model (2): a pool of ``n_copies`` standalone L1 transcripts.
+
+    Each copy is a randomly chosen L1 element, independently perturbed
+    (``simulate_l1_transcript``). Returns ``(records, counts)`` where ``counts[uid]``
+    is the per-element copy number — the ground-truth abundance / expression level
+    that ART reads (∝ copies) and salmon should recover.
+    """
+    keys = list(l1_records)
+    records, counts = [], Counter()
+    for i in range(n_copies):
+        key = rng.choice(keys)
+        seq = simulate_l1_transcript(l1_records[key].seq, rng, del_prob, mutation_prob)
+        records.append(SeqRecord(seq, id=f"{key}|copy{i}", description=""))
+        counts[key] += 1
+    return records, counts
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--transcripts", required=True, help="chr1 transcript FASTA (insertion reference).")
-    ap.add_argument("--l1-elements", required=True, help="Full-length L1 element FASTA (inserts).")
-    ap.add_argument("--power", type=int, required=True, help="insertion_count = 2**power.")
+    ap.add_argument("--model", choices=("transcript", "insert"), default="transcript",
+                    help="transcript = standalone L1 transcript pool (model 2); "
+                         "insert = L1 spliced into host transcripts (model 1).")
+    ap.add_argument("--l1-elements", required=True, help="L1 element FASTA (transcripts / inserts).")
+    ap.add_argument("--transcripts", help="Host transcript FASTA (model 1 only).")
+    ap.add_argument("--power", type=int, required=True, help="copies/insertions = 2**power.")
     ap.add_argument("--del-prob", type=float, required=True)
     ap.add_argument("--mutation-prob", type=float, default=0.01)
     ap.add_argument("--min-distance", type=int, default=100)
     ap.add_argument("--seed", type=int, default=3469, help="Determinism (legacy set none).")
     ap.add_argument("--out-fasta", required=True)
-    ap.add_argument("--out-bed", required=True)
+    ap.add_argument("--out-counts", help="model 2: per-element copy-count TSV (ground truth).")
+    ap.add_argument("--out-bed", help="model 1: insertion BED (ground truth).")
     args = ap.parse_args()
 
     # Seed is salted by (power, del_prob) so each grid cell is a distinct but
     # reproducible draw.
     rng = random.Random((args.seed, args.power, round(args.del_prob, 3)).__hash__())
-
-    reference = {r.id: r for r in SeqIO.parse(args.transcripts, "fasta")}
     l1 = {r.id: r for r in SeqIO.parse(args.l1_elements, "fasta")}
-    if not reference or not l1:
-        raise SystemExit("empty reference or L1 element FASTA")
-
-    count = 2 ** args.power
-    modified, bed_rows = simulate_insertions(
-        reference, l1, count, rng,
-        del_prob=args.del_prob, mutation_prob=args.mutation_prob, min_distance=args.min_distance,
-    )
-
+    if not l1:
+        raise SystemExit("empty L1 element FASTA")
+    n = 2 ** args.power
     Path(args.out_fasta).parent.mkdir(parents=True, exist_ok=True)
-    SeqIO.write(modified, args.out_fasta, "fasta")
-    with open(args.out_bed, "w") as fh:
-        for row in bed_rows:
-            fh.write("\t".join(str(x) for x in row) + "\n")
-    print(f"[gen] power={args.power} del_prob={args.del_prob:.3f}: "
-          f"{len(bed_rows)} insertions of {len(l1)} L1 elements → {args.out_fasta}")
+
+    if args.model == "transcript":
+        if not args.out_counts:
+            raise SystemExit("--out-counts is required for --model transcript")
+        records, counts = simulate_transcript_pool(
+            l1, n, rng, del_prob=args.del_prob, mutation_prob=args.mutation_prob,
+        )
+        SeqIO.write(records, args.out_fasta, "fasta")
+        with open(args.out_counts, "w") as fh:
+            fh.write("l1_id\tcount\n")
+            for uid in sorted(l1):
+                fh.write(f"{uid}\t{counts.get(uid, 0)}\n")
+        print(f"[gen] model=transcript power={args.power} del_prob={args.del_prob:.3f}: "
+              f"{n} transcript copies of {len(l1)} L1 -> {args.out_fasta}")
+    else:
+        if not args.transcripts or not args.out_bed:
+            raise SystemExit("--transcripts and --out-bed are required for --model insert")
+        reference = {r.id: r for r in SeqIO.parse(args.transcripts, "fasta")}
+        if not reference:
+            raise SystemExit("empty host transcript FASTA")
+        modified, bed_rows = simulate_insertions(
+            reference, l1, n, rng,
+            del_prob=args.del_prob, mutation_prob=args.mutation_prob, min_distance=args.min_distance,
+        )
+        SeqIO.write(modified, args.out_fasta, "fasta")
+        with open(args.out_bed, "w") as fh:
+            for row in bed_rows:
+                fh.write("\t".join(str(x) for x in row) + "\n")
+        print(f"[gen] model=insert power={args.power} del_prob={args.del_prob:.3f}: "
+              f"{len(bed_rows)} insertions of {len(l1)} L1 -> {args.out_fasta}")
 
 
 if __name__ == "__main__":
