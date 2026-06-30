@@ -42,9 +42,10 @@ else
 fi
 echo "prep job: ${prep}"
 
-# 2. array — one cell per task, afterok the prep.
+# 2. array — one cell per task, afterok the prep. FORCE_PREP=0 so the workers never
+# rebuild the shared inputs (the prep job owns that); avoids a 45-way index-build race.
 arr_args=(--parsable --dependency="afterok:${prep}" --array="0-$((N - 1))%${THROTTLE}"
-          --export=ALL "${passthru[@]+"${passthru[@]}"}")
+          --export=ALL,FORCE_PREP=0 "${passthru[@]+"${passthru[@]}"}")
 if [[ "${DRY_RUN}" == "1" ]]; then
     echo "[dry-run] sbatch ${arr_args[*]} ${SLURM}"
 else
