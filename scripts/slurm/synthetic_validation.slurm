@@ -120,10 +120,13 @@ seqkit grep -f "${WORK}/keep_r1.txt" "${R1}" -o "${WORK}/filtered_1.fq"
 seqkit grep -f "${WORK}/keep_r2.txt" "${R2}" -o "${WORK}/filtered_2.fq"
 
 # --- 5. salmon quant on the filtered reads ---------------------------------
+# Default to --sketch (pseudoalignment): selective alignment (the deprecated
+# --validateMappings default) panics extending mappings near the 3' end of the short
+# ~6kb L1 references. Override the mapping flags with SALMON_FLAGS if desired.
 echo "[synval] (5) salmon quant → ${SALMON_OUT}"
 salmon quant -q -i "${L1_INDEX}" -l A \
     -1 "${WORK}/filtered_1.fq" -2 "${WORK}/filtered_2.fq" \
-    --validateMappings -o "${SALMON_OUT}" --threads "${SLURM_CPUS_PER_TASK}" \
+    ${SALMON_FLAGS:---sketch} -o "${SALMON_OUT}" --threads "${SLURM_CPUS_PER_TASK}" \
     || { echo "[synval] salmon FAILED"; exit 1; }
 
 echo "[synval] done. quant.sf rows: $(($(wc -l < "${SALMON_OUT}/quant.sf") - 1))  (expect ≈146 L1 loci)"
