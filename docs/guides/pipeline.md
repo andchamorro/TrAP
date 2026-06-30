@@ -104,7 +104,7 @@ python -m trap.modeling.quantify run \
     --r1 sample_R1.fastq.gz --r2 sample_R2.fastq.gz \
     --output-path reports/quantify/sample --k 17 --batch-size 64
 
-python -m trap.modeling.postprocessing filter_ids \
+python -m trap.modeling.postprocessing filter-ids \
     --fastq sample_R1.fastq.gz \
     --output-path reports/quantify/sample --threshold 0.5
 ```
