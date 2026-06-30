@@ -75,19 +75,31 @@ for f in "${R1}" "${R2}"; do
 done
 echo "[synval] sample=${BASE} tau=${TAU} model=${SEQ_MODEL} reads=${R1##*/}"
 
+# Resumable: SKIP_EXISTING=1 (default) reuses a completed tokenise / quantify so a
+# re-run continues from the failed step instead of repeating the GPU pass.
+SKIP_EXISTING="${SKIP_EXISTING:-1}"
+
 # --- 1. tokenize the paired reads (salmon tokenizer) -----------------------
-echo "[synval] (1) processing_dataset → ${WORK}/short_reads/tokenized"
-python -m trap.modeling.predict processing-dataset \
-    --input-file "${R1}" --pair-file "${R2}" --output-path "${WORK}" \
-    --k "${K}" --pretrained-tokenizer-name "${MODELS_DIR}/${TOK}" \
-    || { echo "[synval] processing_dataset FAILED"; exit 1; }
+if [[ "${SKIP_EXISTING}" == "1" && -d "${WORK}/short_reads/tokenized" ]]; then
+    echo "[synval] (1) tokenized dataset exists — SKIP"
+else
+    echo "[synval] (1) processing-dataset → ${WORK}/short_reads/tokenized"
+    python -m trap.modeling.predict processing-dataset \
+        --input-file "${R1}" --pair-file "${R2}" --output-path "${WORK}" \
+        --k "${K}" --pretrained-tokenizer-name "${MODELS_DIR}/${TOK}" \
+        || { echo "[synval] processing-dataset FAILED"; exit 1; }
+fi
 
 # --- 2. classify (GPU) → scores_*.parquet (id + class probs) ---------------
-echo "[synval] (2) quantify with ${SEQ_MODEL}"
-python -m trap.modeling.predict quantify \
-    --pretrained-model-name "${MODELS_DIR}/${SEQ_MODEL}/final" \
-    --output-path "${WORK}" --is-tokenized \
-    || { echo "[synval] quantify FAILED"; exit 1; }
+if [[ "${SKIP_EXISTING}" == "1" && -n "$(ls "${WORK}"/scores_*.parquet 2>/dev/null)" ]]; then
+    echo "[synval] (2) scores exist — SKIP"
+else
+    echo "[synval] (2) quantify with ${SEQ_MODEL}"
+    python -m trap.modeling.predict quantify \
+        --pretrained-model-name "${MODELS_DIR}/${SEQ_MODEL}/final" \
+        --output-path "${WORK}" --is-tokenized \
+        || { echo "[synval] quantify FAILED"; exit 1; }
+fi
 
 # --- 3. filter: keep reads with P(NEGATIVE) < TAU --------------------------
 echo "[synval] (3) filter_ids (P(NEGATIVE) < ${TAU})"
