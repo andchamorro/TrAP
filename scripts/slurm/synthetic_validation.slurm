@@ -7,8 +7,9 @@
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:a100:1
 #SBATCH --partition=gpu
-#SBATCH --output=logs/%x_%j.out
-#SBATCH --error=logs/%x_%j.err
+#SBATCH --array=0-44%4
+#SBATCH --output=logs/%x_%A_%a.out
+#SBATCH --error=logs/%x_%A_%a.err
 #SBATCH --mail-type=END,FAIL
 #
 # End-to-end validation — ONE synthetic chr1 sample through the seqlabel classifier
@@ -34,6 +35,15 @@ command -v salmon >/dev/null || echo "[synval] WARNING: salmon not on PATH — i
 # --- sample + paths --------------------------------------------------------
 CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
 POWER="${POWER:-8}"; DELPROB="${DELPROB:-0.025}"
+# Array mode: map SLURM_ARRAY_TASK_ID -> one (POWER, DELPROB) over POWERS x DELPROBS.
+POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"; DELPROBS="${DELPROBS:-0.000 0.025 0.050 0.075 0.100}"
+if [[ -n "${SLURM_ARRAY_TASK_ID:-}" ]]; then
+    read -ra _P <<< "${POWERS}"; read -ra _D <<< "${DELPROBS}"
+    nD=${#_D[@]}; total=$(( ${#_P[@]} * nD )); i="${SLURM_ARRAY_TASK_ID}"
+    if (( i >= total )); then echo "[synval] array idx ${i} >= grid ${total} — nothing to do"; exit 0; fi
+    POWER="${_P[$((i / nD))]}"; DELPROB="${_D[$((i % nD))]}"
+    echo "[synval] array task ${i}/$((total - 1)) -> POWER=${POWER} DELPROB=${DELPROB}"
+fi
 TAU="${TAU:-0.5}"                                  # keep reads with P(NEGATIVE) < TAU
 SEQ_MODEL="${SEQ_MODEL:-albert.l1hs_l1pa2.v48.k17.salmon.seqlabel}"
 TOK="${TOK:-tokenizer.gencode.v48.k17.salmon}"
