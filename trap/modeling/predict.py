@@ -81,6 +81,20 @@ def debug_callback(debug: bool = typer.Option(False, "--debug", "-d")):
         debug_mode = True
 
 
+def _resolve_model_dir(name_or_path) -> str:
+    """Resolve a model/tokenizer directory from a name or path.
+
+    Tries, in order: the argument as an explicit path; ``models/<name>/final``
+    (a tokenizer bundled in a model dir); ``models/<name>/`` (a standalone
+    tokenizer, per ``tokenizer.py``). Falls back to the ``/final`` form.
+    """
+    arg = str(name_or_path)
+    for candidate in (arg, os.path.join(MODELS_DIR, arg, "final"), os.path.join(MODELS_DIR, arg)):
+        if os.path.isdir(candidate):
+            return candidate
+    return os.path.join(MODELS_DIR, arg, "final")
+
+
 # Device/dtype helpers (resolve_device, autocast_ctx) and the Parquet score
 # helpers (build_score_schema, scores_table) now live in trap.modeling._inference;
 # _autocast_ctx / _resolve_device aliases above keep existing imports working.
@@ -339,16 +353,7 @@ def processing_dataset(
 
     if pretrained_tokenizer_name is not None:
         logger.info("Loading tokenizer")
-        # Resolve the tokenizer dir flexibly: an explicit path, a standalone tokenizer
-        # saved at models/<name>/, or a model dir bundling it at models/<name>/final/.
-        tok_arg = str(pretrained_tokenizer_name)
-        candidates = [
-            tok_arg,                                       # explicit path
-            os.path.join(MODELS_DIR, tok_arg, "final"),    # model dir bundling a tokenizer
-            os.path.join(MODELS_DIR, tok_arg),             # standalone tokenizer models/<name>/
-        ]
-        tok_path = next((c for c in candidates if os.path.isdir(c)), candidates[1])
-        tokenizer = load_kmer_tokenizer(tok_path)
+        tokenizer = load_kmer_tokenizer(_resolve_model_dir(pretrained_tokenizer_name))
 
         _k = k  # capture for closure
 
@@ -449,8 +454,9 @@ def quantify(
     set_global_seed(seed)
 
     logger.info("Loading model")
+    model_dir = _resolve_model_dir(pretrained_model_name)
     model = AlbertForSequenceClassification.from_pretrained(
-        os.path.join(MODELS_DIR, pretrained_model_name, "final"),
+        model_dir,
         attn_implementation="sdpa",
     )
     logger.log("STAGE", f"[predict:quantify] model parameters: {model.num_parameters() / 1e6:.0f}M")
@@ -458,7 +464,7 @@ def quantify(
 
     logger.info("Loading tokenizer")
     tokenizer = load_kmer_tokenizer(
-        os.path.join(MODELS_DIR, pretrained_model_name, "final"),
+        model_dir,
         model.config.max_position_embeddings,
     )
 
