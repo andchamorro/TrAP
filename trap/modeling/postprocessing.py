@@ -22,6 +22,12 @@ from trap.utils.io import genome_file_handle
 app = typer.Typer(help="Filter read IDs based on class scores from trap quantification.")
 
 
+@app.callback()
+def _main() -> None:
+    """Keep the ``filter-ids`` subcommand name (Typer otherwise collapses a
+    single-command app, and whether the name is accepted is version-dependent)."""
+
+
 def sanitize_paths(*args):
     """Convert input arguments to pathlib.Path objects if possible."""
     paths = []
@@ -126,8 +132,6 @@ def filter_ids(
             )
         except ImportError:
             # polars not installed — fall back to pandas
-            import pandas as pd
-
             df = _load_scores_parquet(output_path)
             if "NEGATIVE" not in df.columns:
                 typer.echo("Error: Parquet files lack a 'NEGATIVE' column.")
