@@ -59,12 +59,14 @@ fi
 L1_FASTA="${WORK}/l1_fulllength.fa"
 if [[ ! -s "${L1_FASTA}" || "${FORCE_PREP:-0}" == "1" ]]; then
     echo "[gen] (1) full-length L1 elements from ${PROMOTER_BED} (${L1_MIN_LEN}-${L1_MAX_LEN} bp)"
+    # The BED name column is the subfamily (~73 values), so plain -nameOnly collapses
+    # thousands of distinct genomic L1 to 73 names — breaking the per-element
+    # ground-truth↔quant join. Make the name UNIQUE here (subfamily::chrom:start-end),
+    # version-independently of bedtools -name, then -nameOnly uses it verbatim.
     awk -v lo="${L1_MIN_LEN}" -v hi="${L1_MAX_LEN}" 'BEGIN{OFS="\t"}
-         ($3-$2)>=lo && ($3-$2)<=hi {print}' "${PROMOTER_BED}" > "${WORK}/l1_fulllength.bed"
-    # -name (not -nameOnly): header = <subfamily>::chrom:start-end, UNIQUE per element.
-    # The BED name column is the subfamily (~73 values), so -nameOnly collapses thousands
-    # of distinct genomic L1 to 73 — breaking the per-element ground-truth/quant join.
-    bedtools getfasta -name -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
+         ($3-$2)>=lo && ($3-$2)<=hi {$4=$4"::"$1":"$2"-"$3; print}' \
+         "${PROMOTER_BED}" > "${WORK}/l1_fulllength.bed"
+    bedtools getfasta -nameOnly -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
         | sed '/^>/ s/(.)$//' > "${L1_FASTA}"
 fi
 echo "[gen]     $(grep -c '^>' "${L1_FASTA}") L1 elements, $(grep '^>' "${L1_FASTA}" | sort -u | wc -l) unique names"
