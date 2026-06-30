@@ -1,0 +1,22 @@
+{
+  "figures": [
+    {
+      "figure_id": "abundace_by_insertion_rate",
+      "path": "abundace_by_insertion_rate.png",
+      "caption": "Coefficient of determination between classifier-filtered salmon abundance and the simulated insertion count, as a function of the synthetic L1 insertion level from 2^5 to 2^13.",
+      "description": "Line plot of per-insertion-level R-squared (AlbertSalmon vs Simulated) over the synthetic chr1 benchmark, pooling deletion-probability levels within each insertion level."
+    },
+    {
+      "figure_id": "synthetic_albertsalmon_scatter",
+      "path": "synthetic_albertsalmon_scatter.png",
+      "caption": "Per-element scatter of classifier-filtered salmon abundance against the simulated insertion count, pooled across all grid cells, with the linear fit and overall coefficient of determination.",
+      "description": "Element-level regression scatter of estimated salmon NumReads against simulated insertion count across all insertion-level by deletion-probability cells, annotated with the pooled R-squared."
+    },
+    {
+      "figure_id": "synthetic_albertsalmon_by_subfamily",
+      "path": "synthetic_albertsalmon_by_subfamily.png",
+      "caption": "Per-subfamily coefficient of determination between classifier-filtered salmon abundance and the simulated insertion count, after aggregating elements to the subfamily level within each grid cell.",
+      "description": "Horizontal bar chart of per-subfamily R-squared after subfamily-level aggregation, a stable counterpart to the per-element metric given near-identical L1 elements."
+    }
+  ]
+}

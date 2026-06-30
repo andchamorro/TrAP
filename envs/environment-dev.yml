@@ -41,6 +41,7 @@ dependencies:
   # Bioinformatics (pinned)
   - biopython=1.81
   - pysam=0.22.0
+  - salmon=2.1.2
   
   # Development extras (kernel only; Jupyter runs from base env)
   - ipython=8.18.1
