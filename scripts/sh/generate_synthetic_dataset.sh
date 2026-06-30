@@ -23,16 +23,22 @@ DATA_EXTERNAL="${DATA_EXTERNAL:-data/external}"
 
 # --- inputs (data/external) ------------------------------------------------
 GENOME="${GENOME:-${DATA_EXTERNAL}/GRCh38.p14.genome.fa.gz}"
+# L1 element source (whole-genome annotations; extracted, then inserted into chr1 transcripts):
+#   l1base — 146 curated intact full-length L1 (distinguishable UIDs) from L1Base
+#   rm     — RepeatMasker promoter-positive full-length genomic L1 (near-identical, many)
+L1_SOURCE="${L1_SOURCE:-l1base}"
+L1BASE_BED="${L1BASE_BED:-data/ref/l1base/hsflil1_8438.bed}"
 PROMOTER_BED="${PROMOTER_BED:-${DATA_EXTERNAL}/GCF_000001405.40_GRCh38.p14_rm.LINE1.promoter.bed}"
 GENCODE_FASTA="${GENCODE_FASTA:-${DATA_EXTERNAL}/gencode.v48.transcripts.fa.gz}"
 GENCODE_GTF="${GENCODE_GTF:-${DATA_EXTERNAL}/gencode.v48.annotation.gtf.gz}"
 CHR1_TRANSCRIPTS="${CHR1_TRANSCRIPTS:-}"   # optional: skip GTF subset if provided
 CHR="${CHR:-chr1}"
-# Full-length L1 filter (bp): keep ~6 kb intact elements.
+# RM-source full-length filter (bp); L1Base elements are pre-curated (no length filter).
 L1_MIN_LEN="${L1_MIN_LEN:-5500}"; L1_MAX_LEN="${L1_MAX_LEN:-6500}"
 
 # --- ART + grid + output ---------------------------------------------------
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel}"
+# Dataset dir is suffixed by the L1 source so the l1base and rm benchmarks coexist.
+OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}}"
 FCOV="${FCOV:-5}"; ART_LEN="${ART_LEN:-150}"; ART_MFLEN="${ART_MFLEN:-500}"
 ART_SDEV="${ART_SDEV:-10}"; ART_SS="${ART_SS:-MSv3}"
 SEED="${SEED:-3469}"
@@ -42,7 +48,11 @@ PYDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK="${OUTPUT_DIR}/_inputs"
 mkdir -p "${OUTPUT_DIR}/art" "${WORK}"
 
-for f in "${GENOME}" "${PROMOTER_BED}"; do
+# Simulation model: transcript = standalone L1 transcript pool (model 2, default);
+# insert = L1 spliced into host chr1 transcripts (model 1).
+SIM_MODEL="${SIM_MODEL:-transcript}"
+L1_BED_SRC="${PROMOTER_BED}"; [[ "${L1_SOURCE}" == "l1base" ]] && L1_BED_SRC="${L1BASE_BED}"
+for f in "${GENOME}" "${L1_BED_SRC}"; do
     [[ -f "${f}" ]] || { echo "[gen] ERROR: missing input ${f}" >&2; exit 1; }
 done
 
@@ -58,18 +68,24 @@ fi
 # reuse the shared inputs a prep job built; FORCE_PREP=1 rebuilds them.
 L1_FASTA="${WORK}/l1_fulllength.fa"
 if [[ ! -s "${L1_FASTA}" || "${FORCE_PREP:-0}" == "1" ]]; then
-    echo "[gen] (1) full-length promoter+ L1 from ${PROMOTER_BED} (${L1_MIN_LEN}-${L1_MAX_LEN} bp)"
-    # Select full-length (~6 kb) AND promoter-positive L1: the BED name column is
-    # <subfamily>.{0,1}, where .1 marks an L19088.1 promoter hit (PROMOTER_ONLY=1, default).
-    # That name is only the subfamily (~73 values), so make it UNIQUE per element here
-    # (subfamily.flag::chrom:start-end) — otherwise -nameOnly collapses thousands of
-    # distinct genomic L1 to 73 names and breaks the per-element ground-truth↔quant join.
-    PROMOTER_ONLY="${PROMOTER_ONLY:-1}"
-    awk -v lo="${L1_MIN_LEN}" -v hi="${L1_MAX_LEN}" -v prom="${PROMOTER_ONLY}" 'BEGIN{OFS="\t"}
-         ($3-$2)>=lo && ($3-$2)<=hi && (prom!=1 || $4 ~ /\.1$/) {$4=$4"::"$1":"$2"-"$3; print}' \
-         "${PROMOTER_BED}" > "${WORK}/l1_fulllength.bed"
-    bedtools getfasta -nameOnly -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
-        | sed '/^>/ s/(.)$//' > "${L1_FASTA}"
+    if [[ "${L1_SOURCE}" == "l1base" ]]; then
+        echo "[gen] (1) L1Base intact full-length L1 (genome-wide) from ${L1BASE_BED}"
+        # 146 curated FLI-L1; col4 = UID (already unique). Normalize UID-NNN -> UIDNNN.
+        cut -f1-6 "${L1BASE_BED}" > "${WORK}/l1_fulllength.bed"
+        bedtools getfasta -nameOnly -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
+            | sed -e '/^>/ s/(.)$//' -e 's/^>UID-/>UID/' > "${L1_FASTA}"
+    else
+        echo "[gen] (1) full-length promoter+ L1 from ${PROMOTER_BED} (${L1_MIN_LEN}-${L1_MAX_LEN} bp)"
+        # RM source: name col is <subfamily>.{0,1} (.1 = L19088.1 promoter hit); make the
+        # name UNIQUE per element (subfamily.flag::chrom:start-end), else -nameOnly collapses
+        # thousands of distinct genomic L1 to ~73 names and breaks the per-element join.
+        PROMOTER_ONLY="${PROMOTER_ONLY:-1}"
+        awk -v lo="${L1_MIN_LEN}" -v hi="${L1_MAX_LEN}" -v prom="${PROMOTER_ONLY}" 'BEGIN{OFS="\t"}
+             ($3-$2)>=lo && ($3-$2)<=hi && (prom!=1 || $4 ~ /\.1$/) {$4=$4"::"$1":"$2"-"$3; print}' \
+             "${PROMOTER_BED}" > "${WORK}/l1_fulllength.bed"
+        bedtools getfasta -nameOnly -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
+            | sed '/^>/ s/(.)$//' > "${L1_FASTA}"
+    fi
 fi
 echo "[gen]     $(grep -c '^>' "${L1_FASTA}") L1 elements, $(grep '^>' "${L1_FASTA}" | sort -u | wc -l) unique names"
 
@@ -83,8 +99,8 @@ else
     echo "[gen] (2) salmon index exists → ${L1_INDEX}"
 fi
 
-# --- 3. chr1 transcripts (insertion reference) -----------------------------
-if [[ -z "${CHR1_TRANSCRIPTS}" ]]; then
+# --- 3. host chr1 transcripts (insertion reference; model 1 / insert only) --
+if [[ "${SIM_MODEL}" == "insert" && -z "${CHR1_TRANSCRIPTS}" ]]; then
     CHR1_TRANSCRIPTS="${WORK}/${CHR}_transcripts.fa"
     if [[ ! -s "${CHR1_TRANSCRIPTS}" ]]; then
         [[ -f "${GENCODE_GTF}" ]] || { echo "[gen] ERROR: need GENCODE_GTF to subset ${CHR} transcripts, or pass CHR1_TRANSCRIPTS=" >&2; exit 1; }
@@ -98,11 +114,11 @@ if [[ -z "${CHR1_TRANSCRIPTS}" ]]; then
         seqkit grep -nr -p "$(paste -sd'|' "${WORK}/${CHR}_transcript_ids.txt")" "${GENCODE_FASTA}" \
             -o "${CHR1_TRANSCRIPTS}"
     fi
+    echo "[gen]     host reference: $(grep -c '^>' "${CHR1_TRANSCRIPTS}") ${CHR} transcripts"
 fi
-echo "[gen]     reference: $(grep -c '^>' "${CHR1_TRANSCRIPTS}") ${CHR} transcripts"
 
 if [[ "${PREP_ONLY:-0}" == "1" ]]; then
-    echo "[gen] PREP_ONLY — shared inputs ready (L1 elements, salmon index, ${CHR} transcripts); skipping grid"
+    echo "[gen] PREP_ONLY — shared inputs ready (L1 elements + salmon index${CHR1_TRANSCRIPTS:+ + host transcripts}); skipping grid"
     exit 0
 fi
 
@@ -118,27 +134,33 @@ for power in ${POWERS}; do
   for dp in ${DELPROBS}; do
     suffix="insert_level_${power}_delprob_${dp}"
     base="GRCh38.p14.${CHR}.${suffix}"
-    mod_fa="${OUTPUT_DIR}/${base}.fa"
-    ins_bed="${OUTPUT_DIR}/${base}.bed"
+    art_fa="${OUTPUT_DIR}/${base}.fa"          # what ART reads from (deleted unless KEEP_FASTA)
     art_prefix="${OUTPUT_DIR}/art/${base}.pair.${FCOV}x"
     if [[ "${SKIP_EXISTING}" == "1" && -s "${art_prefix}1${RDEXT}" && -s "${art_prefix}2${RDEXT}" ]]; then
         echo "[gen] (4) ${suffix}: SKIP (reads exist)"; n_skip=$((n_skip + 1)); continue
     fi
-    echo "[gen] (4) ${suffix}: insert 2^${power} L1 (del_prob=${dp})"
-    python "${PYDIR}/generate_synthetic_dataset.py" \
-        --transcripts "${CHR1_TRANSCRIPTS}" --l1-elements "${L1_FASTA}" \
-        --power "${power}" --del-prob "${dp}" --seed "${SEED}" \
-        --out-fasta "${mod_fa}" --out-bed "${ins_bed}"
-    art_illumina -sam -na -i "${mod_fa}" -p -l "${ART_LEN}" -f "${FCOV}" \
+    if [[ "${SIM_MODEL}" == "transcript" ]]; then
+        echo "[gen] (4) ${suffix}: 2^${power} L1 transcript copies (del_prob=${dp})"
+        python "${PYDIR}/generate_synthetic_dataset.py" --model transcript \
+            --l1-elements "${L1_FASTA}" --power "${power}" --del-prob "${dp}" --seed "${SEED}" \
+            --out-fasta "${art_fa}" --out-counts "${OUTPUT_DIR}/${base}.counts.tsv"
+    else
+        echo "[gen] (4) ${suffix}: insert 2^${power} L1 into ${CHR} transcripts (del_prob=${dp})"
+        python "${PYDIR}/generate_synthetic_dataset.py" --model insert \
+            --l1-elements "${L1_FASTA}" --transcripts "${CHR1_TRANSCRIPTS}" \
+            --power "${power}" --del-prob "${dp}" --seed "${SEED}" \
+            --out-fasta "${art_fa}" --out-bed "${OUTPUT_DIR}/${base}.bed"
+    fi
+    art_illumina -sam -na -i "${art_fa}" -p -l "${ART_LEN}" -f "${FCOV}" \
         -m "${ART_MFLEN}" -s "${ART_SDEV}" -ss "${ART_SS}" -o "${art_prefix}" \
         > "${art_prefix}.art.log" 2>&1
     [[ "${GZIP}" == "1" ]] && gzip -f "${art_prefix}1.fq" "${art_prefix}2.fq"
-    # The modified-transcript FASTA is large and only needed for ART — drop it unless kept.
-    [[ "${KEEP_FASTA:-0}" == "1" ]] || rm -f "${mod_fa}"
+    # The ART source FASTA is large and only needed for ART — drop it unless kept.
+    [[ "${KEEP_FASTA:-0}" == "1" ]] || rm -f "${art_fa}"
     n_done=$((n_done + 1))
   done
 done
 echo "[gen] grid: ${n_done} generated, ${n_skip} skipped"
 
-echo "[gen] done → ${OUTPUT_DIR}  (art/*.fq.gz, *.bed, l1_synthetic.Index)"
-echo "[gen] next: validate one sample — POWER=8 DELPROB=0.025 L1_INDEX=${L1_INDEX} sbatch scripts/slurm/synthetic_validation.slurm"
+echo "[gen] done → ${OUTPUT_DIR}  (art/*.fq.gz, ground-truth ${SIM_MODEL/transcript/*.counts.tsv}${SIM_MODEL/insert/*.bed}, l1_synthetic.Index)"
+echo "[gen] next: validate — POWER=8 DELPROB=0.025 REFDIR=${OUTPUT_DIR} L1_INDEX=${L1_INDEX} sbatch scripts/slurm/synthetic_validation.slurm"
