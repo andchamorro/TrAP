@@ -58,11 +58,11 @@ present, else decompresses `.fq.gz` once into `WORK` (`DECOMPRESS=1`, default; s
 `GZIP=0` to skip decompression entirely.
 
 ```bash
-POWER=8 DELPROB=0.025 sbatch scripts/slurm/synthetic_validation.slurm   # one sample
-# fan out:
-for p in $(seq 5 13); do for d in 0.000 0.025 0.050 0.075 0.100; do
-  POWER=$p DELPROB=$d sbatch scripts/slurm/synthetic_validation.slurm
-done; done
+# one sample (single-cell mode):
+POWER=8 DELPROB=0.025 sbatch scripts/slurm/synthetic_validation.slurm
+# full grid as a per-cell SLURM array (recommended):
+bash scripts/slurm/submit_synthetic_validation.sh
+#   bash scripts/slurm/submit_synthetic_validation.sh --dry-run   # preview the array
 ```
 
 ## 3. Figures (R/ggplot)
