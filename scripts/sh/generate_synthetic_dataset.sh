@@ -61,10 +61,13 @@ if [[ ! -s "${L1_FASTA}" || "${FORCE_PREP:-0}" == "1" ]]; then
     echo "[gen] (1) full-length L1 elements from ${PROMOTER_BED} (${L1_MIN_LEN}-${L1_MAX_LEN} bp)"
     awk -v lo="${L1_MIN_LEN}" -v hi="${L1_MAX_LEN}" 'BEGIN{OFS="\t"}
          ($3-$2)>=lo && ($3-$2)<=hi {print}' "${PROMOTER_BED}" > "${WORK}/l1_fulllength.bed"
-    bedtools getfasta -nameOnly -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
+    # -name (not -nameOnly): header = <subfamily>::chrom:start-end, UNIQUE per element.
+    # The BED name column is the subfamily (~73 values), so -nameOnly collapses thousands
+    # of distinct genomic L1 to 73 — breaking the per-element ground-truth/quant join.
+    bedtools getfasta -name -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
         | sed '/^>/ s/(.)$//' > "${L1_FASTA}"
 fi
-echo "[gen]     $(grep -c '^>' "${L1_FASTA}") full-length L1 elements"
+echo "[gen]     $(grep -c '^>' "${L1_FASTA}") L1 elements, $(grep '^>' "${L1_FASTA}" | sort -u | wc -l) unique names"
 
 # --- 2. salmon index from the L1 elements ----------------------------------
 L1_INDEX="${OUTPUT_DIR}/l1_synthetic.Index"
