@@ -129,5 +129,5 @@ salmon quant -q -i "${L1_INDEX}" -l A \
     ${SALMON_FLAGS:---sketch} -o "${SALMON_OUT}" --threads "${SLURM_CPUS_PER_TASK}" \
     || { echo "[synval] salmon FAILED"; exit 1; }
 
-echo "[synval] done. quant.sf rows: $(($(wc -l < "${SALMON_OUT}/quant.sf") - 1))  (expect ≈146 L1 loci)"
+echo "[synval] done. quant.sf rows: $(($(wc -l < "${SALMON_OUT}/quant.sf") - 1))  (= L1 elements in the index)"
 echo "[synval] -> ${SALMON_OUT}/quant.sf"
