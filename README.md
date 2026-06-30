@@ -258,8 +258,10 @@ The grid is insertion level 2⁵–2¹³ × deletion probability {0–0.1} (45 s
 **[`.trap/plans/synthetic-e2e-validation.md`](.trap/plans/synthetic-e2e-validation.md)**):
 
 ```bash
-# one sample, then fan out over the grid:
+# one sample:
 POWER=8 DELPROB=0.025 sbatch scripts/slurm/synthetic_validation.slurm
+# or the full grid as a per-cell SLURM array:
+bash scripts/slurm/submit_synthetic_validation.sh
 ```
 
 > [!NOTE]
