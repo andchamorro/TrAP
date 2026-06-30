@@ -58,13 +58,15 @@ fi
 # reuse the shared inputs a prep job built; FORCE_PREP=1 rebuilds them.
 L1_FASTA="${WORK}/l1_fulllength.fa"
 if [[ ! -s "${L1_FASTA}" || "${FORCE_PREP:-0}" == "1" ]]; then
-    echo "[gen] (1) full-length L1 elements from ${PROMOTER_BED} (${L1_MIN_LEN}-${L1_MAX_LEN} bp)"
-    # The BED name column is the subfamily (~73 values), so plain -nameOnly collapses
-    # thousands of distinct genomic L1 to 73 names — breaking the per-element
-    # ground-truth↔quant join. Make the name UNIQUE here (subfamily::chrom:start-end),
-    # version-independently of bedtools -name, then -nameOnly uses it verbatim.
-    awk -v lo="${L1_MIN_LEN}" -v hi="${L1_MAX_LEN}" 'BEGIN{OFS="\t"}
-         ($3-$2)>=lo && ($3-$2)<=hi {$4=$4"::"$1":"$2"-"$3; print}' \
+    echo "[gen] (1) full-length promoter+ L1 from ${PROMOTER_BED} (${L1_MIN_LEN}-${L1_MAX_LEN} bp)"
+    # Select full-length (~6 kb) AND promoter-positive L1: the BED name column is
+    # <subfamily>.{0,1}, where .1 marks an L19088.1 promoter hit (PROMOTER_ONLY=1, default).
+    # That name is only the subfamily (~73 values), so make it UNIQUE per element here
+    # (subfamily.flag::chrom:start-end) — otherwise -nameOnly collapses thousands of
+    # distinct genomic L1 to 73 names and breaks the per-element ground-truth↔quant join.
+    PROMOTER_ONLY="${PROMOTER_ONLY:-1}"
+    awk -v lo="${L1_MIN_LEN}" -v hi="${L1_MAX_LEN}" -v prom="${PROMOTER_ONLY}" 'BEGIN{OFS="\t"}
+         ($3-$2)>=lo && ($3-$2)<=hi && (prom!=1 || $4 ~ /\.1$/) {$4=$4"::"$1":"$2"-"$3; print}' \
          "${PROMOTER_BED}" > "${WORK}/l1_fulllength.bed"
     bedtools getfasta -nameOnly -s -fi "${GENOME_FA}" -bed "${WORK}/l1_fulllength.bed" \
         | sed '/^>/ s/(.)$//' > "${L1_FASTA}"
