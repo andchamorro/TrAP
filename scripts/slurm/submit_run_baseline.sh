@@ -31,6 +31,21 @@ read -ra _P <<< "${POWERS}"; read -ra _D <<< "${DELPROBS}"
 N=$(( ${#_P[@]} * ${#_D[@]} ))
 THROTTLE="${THROTTLE:-6}"
 
+# Per-method resource profile — salmon/htseq are tiny (observed: salmon ~10 s CPU, <5 MB);
+# STAR/L1EM are heavy. sbatch CLI overrides the static #SBATCH in run_baseline.slurm.
+# Override any with CPUS=/MEM=/TIME=.
+case "${METHOD}" in
+    salmon)        d_cpus=2; d_mem=4G;  d_time=00:20:00 ;;
+    htseq)         d_cpus=2; d_mem=8G;  d_time=01:00:00 ;;
+    tetranscripts) d_cpus=4; d_mem=16G; d_time=02:00:00 ;;
+    star)          d_cpus=8; d_mem=40G; d_time=04:00:00 ;;  # genome index build is memory-heavy
+    l1em|albertem) d_cpus=8; d_mem=32G; d_time=06:00:00 ;;
+    *)             d_cpus=4; d_mem=16G; d_time=04:00:00 ;;
+esac
+CPUS="${CPUS:-$d_cpus}"; MEM="${MEM:-$d_mem}"; TIME="${TIME:-$d_time}"
+export THREADS="${THREADS:-$CPUS}"   # method scripts thread to the allocation
+res=(--cpus-per-task="${CPUS}" --mem="${MEM}" --time="${TIME}")
+
 submit() {  # echoes jobid (or the dry-run line)
     if [[ "${DRY_RUN}" == "1" ]]; then echo "[dry-run] sbatch $* ${SLURM}"; else sbatch "$@" "${SLURM}"; fi
 }
@@ -38,14 +53,14 @@ submit() {  # echoes jobid (or the dry-run line)
 dep=""
 if [[ "${METHOD}" == "star" ]]; then
     # prep job: build the STAR index once (single task), before the align array.
-    prep="$(submit --parsable --job-name=trap_baseline_prep --array=0 --export=ALL,PREP_ONLY=1 "${passthru[@]+"${passthru[@]}"}")"
+    prep="$(submit "${res[@]}" --parsable --job-name=trap_baseline_prep --array=0 --export=ALL,PREP_ONLY=1 "${passthru[@]+"${passthru[@]}"}")"
     echo "prep (STAR index): ${prep}"
     [[ "${DRY_RUN}" == "1" ]] && prep="<prep_jobid>"
     dep="--dependency=afterok:${prep}"
 fi
 
-arr_args=(--parsable --array="0-$((N - 1))%${THROTTLE}" --export=ALL,PREP_ONLY=0 "${passthru[@]+"${passthru[@]}"}")
+arr_args=("${res[@]}" --parsable --array="0-$((N - 1))%${THROTTLE}" --export=ALL,PREP_ONLY=0 "${passthru[@]+"${passthru[@]}"}")
 [[ -n "${dep}" ]] && arr_args=("${dep}" "${arr_args[@]}")
 jobid="$(submit "${arr_args[@]}")"
 echo "array job (${METHOD}): ${jobid}"
-echo "grid: ${N} cells (POWERS='${POWERS}' × DELPROBS='${DELPROBS}'), --array=0-$((N - 1))%${THROTTLE}"
+echo "grid: ${N} cells (POWERS='${POWERS}' × DELPROBS='${DELPROBS}'), --array=0-$((N - 1))%${THROTTLE}, ${CPUS} cpu / ${MEM} / ${TIME}"
