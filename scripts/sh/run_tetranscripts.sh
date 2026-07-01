@@ -10,7 +10,8 @@
 set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"; CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
+OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
 GENE_GTF="${GENE_GTF:-data/external/gencode.v48.annotation.gtf}"
 TE_GTF="${TE_GTF:-data/ref/l1base/hsflil1_8438.te.gtf}"
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"

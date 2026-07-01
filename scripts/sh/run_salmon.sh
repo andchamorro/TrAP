@@ -14,7 +14,8 @@ set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"
 CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
+OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
 L1_INDEX="${L1_INDEX:-${OUTPUT_DIR}/l1_synthetic.Index}"
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"
 DELPROBS="${DELPROBS:-0.000 0.025 0.050 0.075 0.100}"

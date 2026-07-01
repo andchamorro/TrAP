@@ -133,8 +133,9 @@ def subfamily(key: str) -> str:
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     _src = os.environ.get("L1_SOURCE", "l1base")
+    _mtag = ".insert" if os.environ.get("SIM_MODEL", "transcript") == "insert" else ""
     ap.add_argument("--refdir",
-                    default=os.environ.get("REFDIR", f"data/ref/GRCh38.p14.genome.chr1.withdel.{_src}"))
+                    default=os.environ.get("REFDIR", f"data/ref/GRCh38.p14.genome.chr1.withdel.{_src}{_mtag}"))
     ap.add_argument("--chr", default="chr1")
     ap.add_argument("--fcov", default="5")
     ap.add_argument("--out", default="results/synthetic_validation/abundance.csv")
