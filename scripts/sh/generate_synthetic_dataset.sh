@@ -44,7 +44,7 @@ ART_SDEV="${ART_SDEV:-10}"; ART_SS="${ART_SS:-MSv3}"
 SEED="${SEED:-3469}"
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"
 DELPROBS="${DELPROBS:-0.000 0.025 0.050 0.075 0.100}"
-PYDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../python" && pwd)"
 WORK="${OUTPUT_DIR}/_inputs"
 mkdir -p "${OUTPUT_DIR}/art" "${WORK}"
 
