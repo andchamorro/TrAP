@@ -86,7 +86,8 @@ def main():
     qdirs = sorted(glob.glob(f"{args.refdir}/salmon/filtered_seqlabel/*/"))
     for qdir in qdirs:
         base = os.path.basename(qdir.rstrip("/"))
-        m = re.search(r"insert_level_(\d+)_delprob_([0-9.]+)", base)
+        # Anchor del_prob as digits.digits so the trailing '.pair.5x' isn't captured.
+        m = re.search(r"insert_level_(\d+)_delprob_([0-9]+\.[0-9]+)", base)
         quant_sf = os.path.join(qdir, "quant.sf")
         if not m or not os.path.isfile(quant_sf):
             continue
