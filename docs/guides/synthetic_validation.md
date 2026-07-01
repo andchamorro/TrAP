@@ -42,7 +42,7 @@ Outputs to `data/ref/GRCh38.p14.genome.chr1.withdel/`:
 samples). Override via `POWERS=`, `DELPROBS=`, `FCOV=`, `SEED=`, `L1_MIN_LEN/L1_MAX_LEN=`,
 `CHR1_TRANSCRIPTS=` (skip the GTF subset), `OUTPUT_DIR=`.
 
-The insertion simulation (`scripts/sh/generate_synthetic_dataset.py`, ported from
+The insertion simulation (`scripts/python/generate_synthetic_dataset.py`, ported from
 notebook 4.07) applies 5′-biased truncation, internal deletions (`del_prob`), point
 mutations, and TSDs. It is **deterministic** (fixed `--seed`) — unlike the legacy
 generator, which set none.
