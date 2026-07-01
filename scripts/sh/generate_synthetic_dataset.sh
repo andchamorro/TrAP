@@ -129,6 +129,10 @@ fi
 SKIP_EXISTING="${SKIP_EXISTING:-1}"
 GZIP="${GZIP:-1}"
 [[ "${GZIP}" == "1" ]] && RDEXT=".fq.gz" || RDEXT=".fq"
+# ART_SAM=0 (default): do NOT write the per-read alignment SAM — nothing in the pipeline
+# uses it (the alignment baselines re-align with STAR), and it is a large disk hog at high
+# insertion levels. Set ART_SAM=1 to keep it (debugging).
+ART_SAM="${ART_SAM:-0}"; art_sam_flag=(); [[ "${ART_SAM}" == "1" ]] && art_sam_flag=(-sam) || true
 n_done=0; n_skip=0
 for power in ${POWERS}; do
   for dp in ${DELPROBS}; do
@@ -151,7 +155,7 @@ for power in ${POWERS}; do
             --power "${power}" --del-prob "${dp}" --seed "${SEED}" \
             --out-fasta "${art_fa}" --out-bed "${OUTPUT_DIR}/${base}.bed"
     fi
-    art_illumina -sam -na -i "${art_fa}" -p -l "${ART_LEN}" -f "${FCOV}" \
+    art_illumina ${art_sam_flag[@]+"${art_sam_flag[@]}"} -na -i "${art_fa}" -p -l "${ART_LEN}" -f "${FCOV}" \
         -m "${ART_MFLEN}" -s "${ART_SDEV}" -ss "${ART_SS}" -o "${art_prefix}" \
         > "${art_prefix}.art.log" 2>&1
     [[ "${GZIP}" == "1" ]] && gzip -f "${art_prefix}1.fq" "${art_prefix}2.fq"
