@@ -8,7 +8,7 @@ set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"; CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
 OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}}"
-GENOME_FA="${GENOME_FA:-data/ref/GRCh38.p14.genome.fa}"
+GENOME_FA="${GENOME_FA:-data/external/GRCh38.p14.genome.fa}"   # decompressed by align_star.sh / the generator
 L1EM_PATH="${L1EM_PATH:-L1EM}"
 L1EM_BED="${L1EM_BED:-${L1EM_PATH}/annotation/hsflil1_8438.bed}"
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"
