@@ -2,14 +2,13 @@
 """Build the synthetic-benchmark abundance table for the R/ggplot analysis (5.02).
 
 For each grid cell (insertion level × del_prob) it pairs, per L1 element:
-  * Simulated  = number of insertions of that element (count of the insertion BED's
-    name column) — the ground-truth abundance (reads ∝ insertions, elements are ~equal
-    length), 0 for elements never inserted.
+  * Simulated  = ground-truth abundance — the per-element copy count from a model-2
+    transcript-pool counts TSV, or the insertion count from a model-1 BED.
   * AlbertSalmon_seqlabel = salmon NumReads from the seqlabel filter→salmon quant.sf.
 
-The element key is the unique ``<subfamily>.<promoter>::chrom:start-end`` shared by the
-insertion BED (col4), the salmon index, and quant.sf, so the join is 1:1. The subfamily
-prefix is emitted too, for per-subfamily aggregation in the R step.
+The element key (an L1Base ``UID`` or an RM ``<subfamily>.<flag>::chrom:start-end``) is
+shared by the ground truth, the salmon index, and quant.sf, so the join is 1:1. A subfamily
+token is emitted too, for aggregation in the R step.
 
 Emits a long CSV: ``power, del_prob, l1_id, subfamily, simulated, albertsalmon_seqlabel``.
 

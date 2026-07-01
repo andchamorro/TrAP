@@ -1,8 +1,8 @@
 # synthetic_albertsalmon_scatter
 
-**Title**: Per-element abundance recovery (pooled)
+**Title**: Total-level abundance recovery
 **Plot type**: plot
-**Objective**: Show the element-level correspondence between estimated (salmon) and simulated abundance across all grid cells, with the linear fit and overall R².
+**Objective**: Show the total (family-level) correspondence between recovered salmon abundance and simulated abundance per grid cell, with the linear fit and total-level R² (≈1.0) — the level at which the model recovers abundance.
 **Aspect ratio**: 1:1
 **Language**: R
 **Data sources**: abundance_csv
@@ -25,13 +25,14 @@ ab <- data.table::fread(file.path(results_dir, "abundance.csv"))
 
 ## Preprocessing
 
-**Transformations**: none beyond the pooled overall R² annotation (all rows used).
+**Transformations**: sum to the total per grid cell; the total-level R² is the annotation.
 
 ```r
-overall_r2 <- r2(ab$simulated, ab$albertsalmon_seqlabel)
+ab_tot <- ab[, .(sim = sum(simulated), est = sum(albertsalmon_seqlabel)), by = .(power, del_prob)]
+r2_tot <- r2(ab_tot$sim, ab_tot$est)
 ```
 
-**Output variable(s)**: `ab`, `overall_r2`
+**Output variable(s)**: `ab_tot`, `r2_tot`
 
 ---
 
@@ -39,15 +40,16 @@ overall_r2 <- r2(ab$simulated, ab$albertsalmon_seqlabel)
 
 **Chart type**: scatter_regression
 **Palette**: Okabe-Ito (points `#56B4E9`, fit `#D55E00`)
-**Style notes**: dense scatter → alpha 0.25, point size 0.7; lm fit with SE band; R² annotated top-left.
+**Style notes**: 45 per-cell points; lm fit with SE band; R² annotated top-left.
 
 ```r
-fig2 <- ggplot(ab, aes(simulated, albertsalmon_seqlabel)) +
-  geom_point(alpha = 0.25, size = 0.7, colour = OKABE_ITO[2]) +
+fig_scatter <- ggplot(ab_tot, aes(sim, est)) +
+  geom_point(size = 2.6, alpha = 0.75, colour = OKABE_ITO[2]) +
   geom_smooth(method = "lm", se = TRUE, colour = OKABE_ITO[6], fill = OKABE_ITO[6]) +
-  annotate("text", x = -Inf, y = Inf, hjust = -0.15, vjust = 1.5,
-           label = sprintf("R^2 == %.3f", overall_r2), parse = TRUE, size = 5) +
-  labs(x = "Simulated abundance (insertions)", y = "AlbertSalmon (salmon NumReads)")
+  annotate("text", x = -Inf, y = Inf, hjust = -0.15, vjust = 1.6,
+           label = sprintf("R^2 == %.3f", r2_tot), parse = TRUE, size = 5) +
+  labs(x = "Simulated total L1 expression (transcript copies)",
+       y = "Recovered total (salmon NumReads)")
 ```
 
 ---
