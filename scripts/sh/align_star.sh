@@ -11,7 +11,8 @@
 set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"; CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
+OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
 GENOME="${GENOME:-data/external/GRCh38.p14.genome.fa.gz}"
 GENOME_FA="${GENOME_FA:-${GENOME%.gz}}"   # decompressed genome (matches generate_synthetic_dataset.sh)
 GENCODE_GTF="${GENCODE_GTF:-data/external/gencode.v48.annotation.gtf.gz}"

@@ -51,7 +51,8 @@ K="${K:-17}"
 # Dataset dir is suffixed by the L1 source (l1base / rm) so benchmarks coexist.
 L1_SOURCE="${L1_SOURCE:-l1base}"
 SUFFIX="insert_level_${POWER}_delprob_${DELPROB}"
-REFDIR="${REFDIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
+REFDIR="${REFDIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
 # salmon index built by generate_synthetic_dataset.sh from the SAME L1 elements that were
 # expressed (so quant targets == ground-truth elements).
 L1_INDEX="${L1_INDEX:-${REFDIR}/l1_synthetic.Index}"

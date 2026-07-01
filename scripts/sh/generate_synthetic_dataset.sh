@@ -38,7 +38,8 @@ L1_MIN_LEN="${L1_MIN_LEN:-5500}"; L1_MAX_LEN="${L1_MAX_LEN:-6500}"
 
 # --- ART + grid + output ---------------------------------------------------
 # Dataset dir is suffixed by the L1 source so the l1base and rm benchmarks coexist.
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
+OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
 FCOV="${FCOV:-5}"; ART_LEN="${ART_LEN:-150}"; ART_MFLEN="${ART_MFLEN:-500}"
 ART_SDEV="${ART_SDEV:-10}"; ART_SS="${ART_SS:-MSv3}"
 SEED="${SEED:-3469}"
@@ -48,9 +49,8 @@ PYDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../python" && pwd)"
 WORK="${OUTPUT_DIR}/_inputs"
 mkdir -p "${OUTPUT_DIR}/art" "${WORK}"
 
-# Simulation model: transcript = standalone L1 transcript pool (model 2, default);
-# insert = L1 spliced into host chr1 transcripts (model 1).
-SIM_MODEL="${SIM_MODEL:-transcript}"
+# SIM_MODEL (transcript = standalone L1 pool, model 2; insert = L1 into host chr1
+# transcripts, model 1 — the "background" experiment) is set above with the dir tag.
 L1_BED_SRC="${PROMOTER_BED}"; [[ "${L1_SOURCE}" == "l1base" ]] && L1_BED_SRC="${L1BASE_BED}"
 for f in "${GENOME}" "${L1_BED_SRC}"; do
     [[ -f "${f}" ]] || { echo "[gen] ERROR: missing input ${f}" >&2; exit 1; }
