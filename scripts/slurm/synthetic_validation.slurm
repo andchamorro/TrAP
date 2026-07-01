@@ -128,6 +128,15 @@ echo "[synval] (4) seqkit grep — $(wc -l < "${WORK}/keep_base.txt") fragments 
 seqkit grep -f "${WORK}/keep_r1.txt" "${R1}" -o "${WORK}/filtered_1.fq"
 seqkit grep -f "${WORK}/keep_r2.txt" "${R2}" -o "${WORK}/filtered_2.fq"
 
+# Persist the classifier-filtered reads (gzipped) so the alignment-EM baseline (AlbertEM)
+# can reuse them without re-running the GPU classifier. run_albertem.sh reads
+# <REFDIR>/filtered_seqlabel/<base>/{1,2}.fq.gz.
+if [[ "${PERSIST_FILTERED:-1}" == "1" ]]; then
+    fdir="${REFDIR}/filtered_seqlabel/${BASE}"; mkdir -p "${fdir}"
+    gzip -c "${WORK}/filtered_1.fq" > "${fdir}/1.fq.gz"
+    gzip -c "${WORK}/filtered_2.fq" > "${fdir}/2.fq.gz"
+fi
+
 # --- 5. salmon quant on the filtered reads ---------------------------------
 # Default to --sketch (pseudoalignment): selective alignment (the deprecated
 # --validateMappings default) panics extending mappings near the 3' end of the short
