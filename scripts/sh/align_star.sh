@@ -12,7 +12,8 @@ set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"; CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
 OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}}"
-GENOME_FA="${GENOME_FA:-data/ref/GRCh38.p14.genome.fa}"
+GENOME="${GENOME:-data/external/GRCh38.p14.genome.fa.gz}"
+GENOME_FA="${GENOME_FA:-${GENOME%.gz}}"   # decompressed genome (matches generate_synthetic_dataset.sh)
 GENCODE_GTF="${GENCODE_GTF:-data/external/gencode.v48.annotation.gtf.gz}"
 STAR_INDEX="${STAR_INDEX:-data/ref/star/GRCh38.p14.genome.StarIndex}"
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"
@@ -23,7 +24,11 @@ for t in STAR samtools; do command -v "$t" >/dev/null 2>&1 || { echo "[star] ERR
 
 # --- genome index (one-time, heavy) ----------------------------------------
 if [[ ! -s "${STAR_INDEX}/SA" || "${FORCE_PREP:-0}" == "1" ]]; then
-    [[ -s "${GENOME_FA}" ]] || { echo "[star] ERROR: missing genome ${GENOME_FA}" >&2; exit 1; }
+    if [[ ! -s "${GENOME_FA}" ]]; then
+        [[ -s "${GENOME}" ]] || { echo "[star] ERROR: missing genome ${GENOME} (set GENOME=)" >&2; exit 1; }
+        [[ "${GENOME}" == *.gz ]] && { echo "[star] decompressing genome → ${GENOME_FA}"; gunzip -kc "${GENOME}" > "${GENOME_FA}"; } \
+            || GENOME_FA="${GENOME}"
+    fi
     echo "[star] (prep) building STAR index → ${STAR_INDEX}"
     mkdir -p "${STAR_INDEX}"
     gtf_arg=()
