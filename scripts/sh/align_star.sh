@@ -24,7 +24,9 @@ ART_LEN="${ART_LEN:-150}"; THREADS="${THREADS:-8}"; SKIP_EXISTING="${SKIP_EXISTI
 for t in STAR samtools; do command -v "$t" >/dev/null 2>&1 || { echo "[star] ERROR: $t not on PATH" >&2; exit 1; }; done
 
 # --- genome index (one-time, heavy) ----------------------------------------
-if [[ ! -s "${STAR_INDEX}/SA" || "${FORCE_PREP:-0}" == "1" ]]; then
+# Gate on a .complete sentinel, not SA: STAR writes SA *before* the GTF junction
+# insertion, so an OOM'd/partial build leaves SA behind and would be wrongly skipped.
+if [[ ! -s "${STAR_INDEX}/.complete" || "${FORCE_PREP:-0}" == "1" ]]; then
     if [[ ! -s "${GENOME_FA}" ]]; then
         [[ -s "${GENOME}" ]] || { echo "[star] ERROR: missing genome ${GENOME} (set GENOME=)" >&2; exit 1; }
         [[ "${GENOME}" == *.gz ]] && { echo "[star] decompressing genome → ${GENOME_FA}"; gunzip -kc "${GENOME}" > "${GENOME_FA}"; } \
@@ -38,8 +40,15 @@ if [[ ! -s "${STAR_INDEX}/SA" || "${FORCE_PREP:-0}" == "1" ]]; then
         [[ "${gtf}" == *.gz ]] && { gtf="${STAR_INDEX}/annotation.gtf"; [[ -s "${gtf}" ]] || zcat -f "${GENCODE_GTF}" > "${gtf}"; }
         gtf_arg=(--sjdbGTFfile "${gtf}" --sjdbOverhang "$((ART_LEN - 1))")
     fi
+    # genomeSAsparseD 2 halves the suffix-array RAM and on-disk index size (minor mapping
+    # speed cost — fine for a benchmark); limitGenomeGenerateRAM lets STAR use the (larger)
+    # prep allocation instead of chunking the SA sort to disk. Junction insertion for the
+    # full GENCODE annotation is the memory peak, so the prep job is given extra RAM.
     STAR --runMode genomeGenerate --genomeDir "${STAR_INDEX}" \
-         --genomeFastaFiles "${GENOME_FA}" "${gtf_arg[@]}" --runThreadN "${THREADS}"
+         --genomeFastaFiles "${GENOME_FA}" "${gtf_arg[@]}" --runThreadN "${THREADS}" \
+         --genomeSAsparseD "${STAR_SA_SPARSE:-2}" \
+         --limitGenomeGenerateRAM "${STAR_GEN_RAM:-80000000000}"
+    touch "${STAR_INDEX}/.complete"
 else
     echo "[star] (prep) STAR index exists → ${STAR_INDEX}"
 fi
