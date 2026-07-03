@@ -29,7 +29,7 @@ for t in STAR samtools; do command -v "$t" >/dev/null 2>&1 || { echo "[star] ERR
 # The build runs ONLY in prep mode (PREP_ONLY=1 or FORCE_PREP=1). Align tasks never build
 # it — otherwise every array task would rebuild the whole-genome index into the same dir
 # in parallel; they fail fast instead if the prep has not run.
-index_ready=0; [[ -s "${STAR_INDEX}/.complete" && "${FORCE_PREP:-0}" != "1" ]] && index_ready=1
+index_ready=0; [[ -f "${STAR_INDEX}/.complete" && "${FORCE_PREP:-0}" != "1" ]] && index_ready=1
 if [[ "${index_ready}" == "0" ]]; then
     if [[ "${PREP_ONLY:-0}" != "1" && "${FORCE_PREP:-0}" != "1" ]]; then
         echo "[star] ERROR: STAR index not built (${STAR_INDEX}/.complete missing)." >&2
@@ -58,7 +58,7 @@ if [[ "${index_ready}" == "0" ]]; then
          --genomeFastaFiles "${GENOME_FA}" "${gtf_arg[@]}" --runThreadN "${THREADS}" \
          --genomeSAsparseD "${STAR_SA_SPARSE:-2}" \
          --limitGenomeGenerateRAM "${STAR_GEN_RAM:-80000000000}"
-    touch "${STAR_INDEX}/.complete"
+    date -u +"%Y-%m-%dT%H:%M:%SZ" > "${STAR_INDEX}/.complete"   # non-empty sentinel (checked with -f)
 else
     echo "[star] (prep) STAR index exists → ${STAR_INDEX}"
 fi
@@ -89,10 +89,16 @@ for power in ${POWERS}; do
     mkdir -p "${out}"
     readcmd=(); [[ "${r1}" == *.gz ]] && readcmd=(--readFilesCommand zcat)
     echo "[star] ${base}: aligning"
+    # STAR's default temp dir is ./_STARtmp in the CWD, so concurrent array tasks (all
+    # launched from the repo root) collide on the same path. Give each cell a unique tmp
+    # dir on node-local scratch; STAR requires it to NOT pre-exist, so clear any stale one.
+    star_tmp="${TMPDIR:-/tmp}/starTmp_${base}_${SLURM_ARRAY_TASK_ID:-$$}"; rm -rf "${star_tmp}"
     STAR --genomeDir "${STAR_INDEX}" --readFilesIn "${r1}" "${r2}" "${readcmd[@]}" \
          --outSAMtype BAM SortedByCoordinate --outFileNamePrefix "${out}/" \
+         --outTmpDir "${star_tmp}" \
          --outSAMprimaryFlag AllBestScore --outFilterMultimapNmax 1000 \
          --runThreadN "${THREADS}" > "${out}/STAR.out" 2> "${out}/STAR.err"
+    rm -rf "${star_tmp}"
     samtools index "${bam}"
     n_done=$((n_done + 1))
   done
