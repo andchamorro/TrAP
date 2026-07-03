@@ -56,4 +56,9 @@ for power in ${POWERS}; do
     n_done=$((n_done + 1))
   done
 done
+if [[ "${n_done}" -eq 0 && "${n_skip}" -eq 0 ]]; then
+    echo "[albertem] ERROR: nothing processed — no input BAMs / filtered reads under ${OUTPUT_DIR}." >&2
+    echo "[albertem]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ .l1base.insert)." >&2
+    exit 1
+fi
 echo "[albertem] done: ${n_done} quantified, ${n_skip} skipped → ${OUTPUT_DIR}/MLEM"

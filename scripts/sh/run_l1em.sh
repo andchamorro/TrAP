@@ -41,4 +41,9 @@ for power in ${POWERS}; do
     n_done=$((n_done + 1))
   done
 done
+if [[ "${n_done}" -eq 0 && "${n_skip}" -eq 0 ]]; then
+    echo "[l1em] ERROR: nothing processed — no input BAMs under ${OUTPUT_DIR}/star (run align_star.sh first?)." >&2
+    echo "[l1em]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ .l1base.insert)." >&2
+    exit 1
+fi
 echo "[l1em] done: ${n_done} quantified, ${n_skip} skipped → ${OUTPUT_DIR}/L1EM"
