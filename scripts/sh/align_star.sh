@@ -23,10 +23,20 @@ ART_LEN="${ART_LEN:-150}"; THREADS="${THREADS:-8}"; SKIP_EXISTING="${SKIP_EXISTI
 
 for t in STAR samtools; do command -v "$t" >/dev/null 2>&1 || { echo "[star] ERROR: $t not on PATH" >&2; exit 1; }; done
 
-# --- genome index (one-time, heavy) ----------------------------------------
+# --- genome index (one-time, heavy; built ONLY by the prep job) ------------
 # Gate on a .complete sentinel, not SA: STAR writes SA *before* the GTF junction
-# insertion, so an OOM'd/partial build leaves SA behind and would be wrongly skipped.
-if [[ ! -s "${STAR_INDEX}/.complete" || "${FORCE_PREP:-0}" == "1" ]]; then
+# insertion, so an OOM'd/partial build leaves SA behind and must not be treated as done.
+# The build runs ONLY in prep mode (PREP_ONLY=1 or FORCE_PREP=1). Align tasks never build
+# it — otherwise every array task would rebuild the whole-genome index into the same dir
+# in parallel; they fail fast instead if the prep has not run.
+index_ready=0; [[ -s "${STAR_INDEX}/.complete" && "${FORCE_PREP:-0}" != "1" ]] && index_ready=1
+if [[ "${index_ready}" == "0" ]]; then
+    if [[ "${PREP_ONLY:-0}" != "1" && "${FORCE_PREP:-0}" != "1" ]]; then
+        echo "[star] ERROR: STAR index not built (${STAR_INDEX}/.complete missing)." >&2
+        echo "[star]   build it once first:  PREP_ONLY=1 bash scripts/sh/align_star.sh" >&2
+        echo "[star]   (submit_run_baseline.sh runs this as the prep job before the align array)." >&2
+        exit 1
+    fi
     if [[ ! -s "${GENOME_FA}" ]]; then
         [[ -s "${GENOME}" ]] || { echo "[star] ERROR: missing genome ${GENOME} (set GENOME=)" >&2; exit 1; }
         [[ "${GENOME}" == *.gz ]] && { echo "[star] decompressing genome → ${GENOME_FA}"; gunzip -kc "${GENOME}" > "${GENOME_FA}"; } \
