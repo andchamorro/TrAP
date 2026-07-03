@@ -53,4 +53,9 @@ for power in ${POWERS}; do
     n_done=$((n_done + 1))
   done
 done
+if [[ "${n_done}" -eq 0 && "${n_skip}" -eq 0 ]]; then
+    echo "[salmon] ERROR: nothing processed — no reads found under ${OUTPUT_DIR}/art." >&2
+    echo "[salmon]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ .l1base.insert)." >&2
+    exit 1
+fi
 echo "[salmon] done: ${n_done} quantified, ${n_skip} skipped → ${outroot}"

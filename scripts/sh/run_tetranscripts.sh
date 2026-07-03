@@ -43,4 +43,9 @@ for power in ${POWERS}; do
     n_done=$((n_done + 1))
   done
 done
+if [[ "${n_done}" -eq 0 && "${n_skip}" -eq 0 ]]; then
+    echo "[te] ERROR: nothing processed — no input BAMs under ${OUTPUT_DIR}/star (run align_star.sh first?)." >&2
+    echo "[te]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ .l1base.insert)." >&2
+    exit 1
+fi
 echo "[te] done: ${n_done} quantified, ${n_skip} skipped → ${OUTPUT_DIR}/TEtranscripts"
