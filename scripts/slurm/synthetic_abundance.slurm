@@ -32,7 +32,8 @@ cd "${REPO_ROOT}"
 
 CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"; DELPROBS="${DELPROBS:-0.000 0.025 0.050 0.075 0.100}"
-if [[ "${SIM_MODEL:-transcript}" == "insert" ]]; then _rd="results/synthetic_validation/insert"; else _rd="results/synthetic_validation"; fi
+source "${REPO_ROOT}/scripts/sh/_synthetic_paths.sh"
+_rd="$(experiment_results_dir "${SIM_MODEL:-transcript}")"
 OUT="${OUT:-${_rd}/abundance.csv}"
 METHODS_OUT="${METHODS_OUT:-${_rd}/abundance_methods.csv}"
 NORM_FLAG=(); [[ "${NORMALIZE:-1}" == "1" ]] && NORM_FLAG=(--normalize)

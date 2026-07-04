@@ -11,8 +11,9 @@
 set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"; CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
-SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_synthetic_paths.sh"
+OUTPUT_DIR="${OUTPUT_DIR:-$(experiment_dir "${SIM_MODEL}" "${L1_SOURCE}" "${CHR}")}"
 GENOME="${GENOME:-data/external/GRCh38.p14.genome.fa.gz}"
 GENOME_FA="${GENOME_FA:-${GENOME%.gz}}"   # decompressed genome (matches generate_synthetic_dataset.sh)
 GENCODE_GTF="${GENCODE_GTF:-data/external/gencode.v48.annotation.gtf.gz}"
@@ -105,7 +106,7 @@ for power in ${POWERS}; do
 done
 if [[ "${n_done}" -eq 0 && "${n_skip}" -eq 0 ]]; then
     echo "[star] ERROR: nothing processed — no reads found under ${OUTPUT_DIR}/art." >&2
-    echo "[star]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ .l1base.insert)." >&2
+    echo "[star]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ synthetic/l1-host-insert.l1base)." >&2
     exit 1
 fi
 echo "[star] done: ${n_done} aligned, ${n_skip} skipped → ${OUTPUT_DIR}/star"

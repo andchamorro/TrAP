@@ -8,8 +8,9 @@
 set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"; CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
-SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_synthetic_paths.sh"
+OUTPUT_DIR="${OUTPUT_DIR:-$(experiment_dir "${SIM_MODEL}" "${L1_SOURCE}" "${CHR}")}"
 GENOME_FA="${GENOME_FA:-data/external/GRCh38.p14.genome.fa}"   # decompressed by align_star.sh / the generator
 L1EM_PATH="${L1EM_PATH:-L1EM}"                                 # external L1EM repo (kept unchanged)
 L1EM_BED="${L1EM_BED:-data/ref/l1base/hsflil1_8438.l1em.bed}"  # L1EM-format annotation (family.category.locus.strand), NOT the generator's hsflil1_8438.bed
@@ -66,7 +67,7 @@ for power in ${POWERS}; do
 done
 if [[ "${n_done}" -eq 0 && "${n_skip}" -eq 0 ]]; then
     echo "[albertem] ERROR: nothing processed — no input BAMs / filtered reads under ${OUTPUT_DIR}." >&2
-    echo "[albertem]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ .l1base.insert)." >&2
+    echo "[albertem]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ synthetic/l1-host-insert.l1base)." >&2
     exit 1
 fi
 echo "[albertem] done: ${n_done} quantified, ${n_skip} skipped → ${OUTPUT_DIR}/MLEM"

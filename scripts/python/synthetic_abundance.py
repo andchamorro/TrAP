@@ -396,16 +396,52 @@ def subfamily(key: str) -> str:
     return key.split("::", 1)[0].rsplit(".", 1)[0]
 
 
+# Canonical synthetic directory resolver — mirror of scripts/sh/_synthetic_paths.sh so the
+# SIM_MODEL → experiment-token mapping lives in one conceptual place (CLAUDE.md: do not
+# duplicate). The two must stay in sync.
+EXPERIMENT_TOKEN = {"transcript": "l1-transcript-pool", "insert": "l1-host-insert"}
+
+
+def experiment_token(sim_model: str) -> str:
+    """Canonical experiment token from SIM_MODEL (``transcript`` / ``insert``)."""
+    try:
+        return EXPERIMENT_TOKEN[sim_model]
+    except KeyError:
+        raise SystemExit(
+            f"[abundance] ERROR: unknown SIM_MODEL='{sim_model}' (expected transcript|insert)"
+        )
+
+
+def experiment_dir(sim_model: str, l1_source: str, chrom: str) -> str:
+    """Reference directory for an experiment, with a pre-refactor fallback.
+
+    Returns the legacy ``GRCh38.p14.genome.<chr>.withdel.<src>[.insert]`` path only when the
+    new ``data/ref/synthetic/<token>.<src>`` tree is absent, so unmoved Grace trees keep
+    working (see docs/guides/synthetic_validation.md).
+    """
+    new = f"data/ref/synthetic/{experiment_token(sim_model)}.{l1_source}"
+    mtag = ".insert" if sim_model == "insert" else ""
+    legacy = f"data/ref/GRCh38.p14.genome.{chrom}.withdel.{l1_source}{mtag}"
+    return legacy if (not os.path.isdir(new) and os.path.isdir(legacy)) else new
+
+
+def experiment_results_dir(sim_model: str) -> str:
+    """``results/synthetic_validation/<experiment token>`` for an experiment."""
+    return f"results/synthetic_validation/{experiment_token(sim_model)}"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    _sim = os.environ.get("SIM_MODEL", "transcript")
     _src = os.environ.get("L1_SOURCE", "l1base")
-    _mtag = ".insert" if os.environ.get("SIM_MODEL", "transcript") == "insert" else ""
+    _chr = os.environ.get("CHR", "chr1")
+    _rd = experiment_results_dir(_sim)
     ap.add_argument("--refdir",
-                    default=os.environ.get("REFDIR", f"data/ref/GRCh38.p14.genome.chr1.withdel.{_src}{_mtag}"))
-    ap.add_argument("--chr", default="chr1")
+                    default=os.environ.get("REFDIR", experiment_dir(_sim, _src, _chr)))
+    ap.add_argument("--chr", default=_chr)
     ap.add_argument("--fcov", default="5")
-    ap.add_argument("--out", default="results/synthetic_validation/abundance.csv")
-    ap.add_argument("--methods-out", default="results/synthetic_validation/abundance_methods.csv",
+    ap.add_argument("--out", default=f"{_rd}/abundance.csv")
+    ap.add_argument("--methods-out", default=f"{_rd}/abundance_methods.csv",
                     help="long table of every baseline method that has outputs.")
     ap.add_argument("--normalize", action="store_true",
                     default=os.environ.get("NORMALIZE", "0") == "1",

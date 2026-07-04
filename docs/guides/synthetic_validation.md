@@ -10,6 +10,34 @@ in-distribution read-level metrics.
 
 See the full plan in `.trap/plans/synthetic-e2e-validation.md`.
 
+## 0. Directory naming (by experiment type)
+
+The reference trees are named by **experiment type** (derived from `SIM_MODEL`), grouped
+under a `synthetic/` parent. The single resolver `scripts/sh/_synthetic_paths.sh`
+(`experiment_dir` / `experiment_results_dir`, mirrored in
+`scripts/python/synthetic_abundance.py`) is the one place this mapping lives — every
+synthetic script sources it rather than re-deriving the path:
+
+| `SIM_MODEL` | model | experiment | reference dir | results dir |
+|---|---|---|---|---|
+| `transcript` | 2 | standalone L1 transcript pool (no host background) | `data/ref/synthetic/l1-transcript-pool.<l1source>` | `results/synthetic_validation/l1-transcript-pool/` |
+| `insert` | 1 | full-length L1 spliced into host chr1 transcripts (with background) | `data/ref/synthetic/l1-host-insert.<l1source>` | `results/synthetic_validation/l1-host-insert/` |
+
+The `l1source` (`l1base` / `rm`) stays a trailing qualifier so both sources coexist;
+`withdel` and `chr1` are fixed for this benchmark and are recorded in the manifest instead
+of the directory name.
+
+**Migrating an existing tree.** The resolver falls back to the pre-refactor name
+(`data/ref/GRCh38.p14.genome.chr1.withdel.<l1source>[.insert]`) whenever the new directory
+is absent, so unmoved trees keep working. To adopt the new layout, do the one-time move
+once (gitignored, so `git` is unaffected):
+
+```bash
+mkdir -p data/ref/synthetic
+mv data/ref/GRCh38.p14.genome.chr1.withdel.l1base        data/ref/synthetic/l1-transcript-pool.l1base
+mv data/ref/GRCh38.p14.genome.chr1.withdel.l1base.insert data/ref/synthetic/l1-host-insert.l1base
+```
+
 ## 1. Generate the dataset (once, on a compute node)
 
 Heavy step (ART × 45 grid cells). Needs `art_illumina`, `seqkit`, `bedtools`,
@@ -33,7 +61,7 @@ bash scripts/slurm/submit_generate_synthetic.sh
 #   bash scripts/sh/generate_synthetic_dataset.sh
 ```
 
-Outputs to `data/ref/GRCh38.p14.genome.chr1.withdel/`:
+Outputs to the experiment's reference dir (§0, e.g. `data/ref/synthetic/l1-host-insert.l1base/`):
 - `art/GRCh38.p14.chr1.insert_level_<power>_delprob_<dp>.pair.5x{1,2}.fq.gz` — reads
 - `GRCh38.p14.chr1.insert_level_<power>_delprob_<dp>.bed` — insertion ground truth
 - `l1_synthetic.Index` — salmon index built from the inserted L1 elements
@@ -68,7 +96,8 @@ bash scripts/slurm/submit_synthetic_validation.sh
 ## 3. Figures (R/ggplot)
 
 Per the manuscript figure convention, a Python step emits
-`results/synthetic_validation/abundance.csv` and an R notebook
+`results/synthetic_validation/<experiment>/abundance.csv` (§0, e.g.
+`l1-host-insert/`) and an R notebook
 (`notebooks/5.02-ach-synthetic-e2e-validation.ipynb`, `ir-trap` kernel,
 `data.table` + `ggplot2`) renders the R² comparison to
 `reports/figures/synthetic_validation/`.

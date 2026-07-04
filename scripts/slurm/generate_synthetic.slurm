@@ -52,8 +52,10 @@ if [[ -n "${SLURM_ARRAY_TASK_ID:-}" && "${PREP_ONLY:-0}" != "1" ]]; then
 fi
 
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    source "${REPO_ROOT}/scripts/sh/_synthetic_paths.sh"
+    _out="${OUTPUT_DIR:-$(experiment_dir "${SIM_MODEL:-transcript}" "${L1_SOURCE:-l1base}" "${CHR:-chr1}")}"
     echo "[gen] DRY_RUN — POWERS='${POWERS}' DELPROBS='${DELPROBS}' FCOV=${FCOV:-5} SEED=${SEED:-3469}"
-    echo "  CHR=${CHR:-chr1}  OUTPUT_DIR=${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.chr1.withdel}"
+    echo "  CHR=${CHR:-chr1}  OUTPUT_DIR=${_out}"
     echo "  SKIP_EXISTING=${SKIP_EXISTING:-1}  PREP_ONLY=${PREP_ONLY:-0}"
     exit 0
 fi
