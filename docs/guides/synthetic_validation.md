@@ -102,6 +102,33 @@ Per the manuscript figure convention, a Python step emits
 `data.table` + `ggplot2`) renders the R² comparison to
 `reports/figures/synthetic_validation/`.
 
+## 4. Reproduction from the archived source run (option A, 2026-07-04)
+
+`synthetic_salmon_l1em_teht_some` was reproduced **from the archived source-run artifacts**
+(fetched with `.trap/scripts/fetch_collect_synthetic_host_insert.sh`), so **no new
+experiment was needed**. The archived tree lays methods out as `salmon/art/` (plain →
+Salmon) and `salmon/filtered/` (classifier-filtered → AlbertSalmon), with TEtranscripts
+`*.cntTable` lacking the `GRCh38.p14.` prefix; the collector now resolves these via subdir
+candidates + a filename glob (see `SALMON_UNFILTERED_SUBDIRS`/`SALMON_FILTERED_SUBDIRS`).
+
+**Observed per-element R² (all 45 cells pooled, `abundance` vs `simulated` copies):**
+
+| Method | R² | Published target |
+|---|---|---|
+| AlbertSalmon | **0.99** | ≈ 0.99 ✓ |
+| Salmon | **0.94** | ≈ 0.95 ✓ |
+| TEtranscripts | 0.94 | — |
+| HTseq | 0.88 | — |
+| AlbertEM | 0.85 | — |
+| L1EM | 0.84 | — |
+
+AlbertSalmon ≫ Salmon per element reproduces the manuscript result. At the per-**cell**
+total level both are near-perfect (Salmon 0.9998, AlbertSalmon 0.9985) and tie — total-R²
+spans 2⁵–2¹³ so it is a weak discriminator; the notebook reports it but no longer hard-fails
+on the order. The archive has no `_inputs/l1_fulllength.bed`, so the legacy `--normalize`
+per-element axis (`simulated_reads`) is unavailable; the raw-copy axis gives the R² above and
+matches the published grid, so normalization was not required.
+
 ## Caveat — reuse of legacy baselines
 
 The legacy generator set no random seed, so this re-creation is a **new, seeded
