@@ -37,9 +37,11 @@ CHR="${CHR:-chr1}"
 L1_MIN_LEN="${L1_MIN_LEN:-5500}"; L1_MAX_LEN="${L1_MAX_LEN:-6500}"
 
 # --- ART + grid + output ---------------------------------------------------
-# Dataset dir is suffixed by the L1 source so the l1base and rm benchmarks coexist.
-SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
+# Dataset dir is named by experiment type (SIM_MODEL) and the L1 source, so the
+# transcript-pool/host-insert × l1base/rm benchmarks coexist (see _synthetic_paths.sh).
+SIM_MODEL="${SIM_MODEL:-transcript}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_synthetic_paths.sh"
+OUTPUT_DIR="${OUTPUT_DIR:-$(experiment_dir "${SIM_MODEL}" "${L1_SOURCE}" "${CHR}")}"
 FCOV="${FCOV:-5}"; ART_LEN="${ART_LEN:-150}"; ART_MFLEN="${ART_MFLEN:-500}"
 ART_SDEV="${ART_SDEV:-10}"; ART_SS="${ART_SS:-MSv3}"
 SEED="${SEED:-3469}"

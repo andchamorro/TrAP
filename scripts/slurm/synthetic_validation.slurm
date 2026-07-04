@@ -48,11 +48,12 @@ TAU="${TAU:-0.5}"                                  # keep reads with P(NEGATIVE)
 SEQ_MODEL="${SEQ_MODEL:-albert.l1hs_l1pa2.v48.k17.salmon.seqlabel}"
 TOK="${TOK:-tokenizer.gencode.v48.k17.salmon}"
 K="${K:-17}"
-# Dataset dir is suffixed by the L1 source (l1base / rm) so benchmarks coexist.
+# Dataset dir is named by experiment type (SIM_MODEL) + L1 source so benchmarks coexist.
 L1_SOURCE="${L1_SOURCE:-l1base}"
 SUFFIX="insert_level_${POWER}_delprob_${DELPROB}"
-SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
-REFDIR="${REFDIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"
+source "${REPO_ROOT}/scripts/sh/_synthetic_paths.sh"
+REFDIR="${REFDIR:-$(experiment_dir "${SIM_MODEL}" "${L1_SOURCE}" "${CHR}")}"
 # salmon index built by generate_synthetic_dataset.sh from the SAME L1 elements that were
 # expressed (so quant targets == ground-truth elements).
 L1_INDEX="${L1_INDEX:-${REFDIR}/l1_synthetic.Index}"

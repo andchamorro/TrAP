@@ -14,8 +14,9 @@ set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"
 CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
-SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_synthetic_paths.sh"
+OUTPUT_DIR="${OUTPUT_DIR:-$(experiment_dir "${SIM_MODEL}" "${L1_SOURCE}" "${CHR}")}"
 L1_INDEX="${L1_INDEX:-${OUTPUT_DIR}/l1_synthetic.Index}"
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"
 DELPROBS="${DELPROBS:-0.000 0.025 0.050 0.075 0.100}"
@@ -55,7 +56,7 @@ for power in ${POWERS}; do
 done
 if [[ "${n_done}" -eq 0 && "${n_skip}" -eq 0 ]]; then
     echo "[salmon] ERROR: nothing processed — no reads found under ${OUTPUT_DIR}/art." >&2
-    echo "[salmon]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ .l1base.insert)." >&2
+    echo "[salmon]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ synthetic/l1-host-insert.l1base)." >&2
     exit 1
 fi
 echo "[salmon] done: ${n_done} quantified, ${n_skip} skipped → ${outroot}"

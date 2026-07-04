@@ -9,8 +9,9 @@
 set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"; CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"
-SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]] && _mtag=".insert" || true
-OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
+SIM_MODEL="${SIM_MODEL:-transcript}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_synthetic_paths.sh"
+OUTPUT_DIR="${OUTPUT_DIR:-$(experiment_dir "${SIM_MODEL}" "${L1_SOURCE}" "${CHR}")}"
 HTSEQ_GTF="${HTSEQ_GTF:-data/ref/l1base/hsflil1_8438.te.gtf}"
 FEATURE_TYPE="${FEATURE_TYPE:-exon}"; ID_ATTR="${ID_ATTR:-gene_id}"; STRANDED="${STRANDED:-no}"
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"
@@ -40,7 +41,7 @@ for power in ${POWERS}; do
 done
 if [[ "${n_done}" -eq 0 && "${n_skip}" -eq 0 ]]; then
     echo "[htseq] ERROR: nothing processed — no input BAMs under ${OUTPUT_DIR}/star (run align_star.sh first?)." >&2
-    echo "[htseq]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ .l1base.insert)." >&2
+    echo "[htseq]   wrong dataset? for the background experiment pass SIM_MODEL=insert (→ synthetic/l1-host-insert.l1base)." >&2
     exit 1
 fi
 echo "[htseq] done: ${n_done} quantified, ${n_skip} skipped → ${OUTPUT_DIR}/HTseq"
