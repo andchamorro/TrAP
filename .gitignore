@@ -25,6 +25,9 @@ config/hpc/*.local.yaml
 # Analysis outputs
 /results/
 
+# Reports
+/reports/
+
 # Notebooks: ignore all directory contents except committed .ipynb files.
 # notebooks/legacy/ holds draft notebooks
 /notebooks/*

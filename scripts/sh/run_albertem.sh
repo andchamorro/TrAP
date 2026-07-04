@@ -12,7 +12,7 @@ SIM_MODEL="${SIM_MODEL:-transcript}"; _mtag=""; [[ "${SIM_MODEL}" == "insert" ]]
 OUTPUT_DIR="${OUTPUT_DIR:-data/ref/GRCh38.p14.genome.${CHR}.withdel.${L1_SOURCE}${_mtag}}"
 GENOME_FA="${GENOME_FA:-data/external/GRCh38.p14.genome.fa}"   # decompressed by align_star.sh / the generator
 L1EM_PATH="${L1EM_PATH:-L1EM}"                                 # external L1EM repo (kept unchanged)
-L1EM_BED="${L1EM_BED:-data/ref/l1base/hsflil1_8438.bed}"       # reference resource lives under data/ref/
+L1EM_BED="${L1EM_BED:-data/ref/l1base/hsflil1_8438.l1em.bed}"  # L1EM-format annotation (family.category.locus.strand), NOT the generator's hsflil1_8438.bed
 FILTERED_DIR="${FILTERED_DIR:-${OUTPUT_DIR}/filtered_seqlabel}"
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"
 DELPROBS="${DELPROBS:-0.000 0.025 0.050 0.075 0.100}"
@@ -23,6 +23,11 @@ for f in "${GENOME_FA}" "${L1EM_BED}"; do
     [[ -f "${f}" ]] || { echo "[albertem] ERROR: missing ${f}" >&2; exit 1; }
 done
 abs_l1em="$(realpath "${L1EM_PATH}")"; abs_genome="$(realpath "${GENOME_FA}")"; abs_bed="$(realpath "${L1EM_BED}")"
+
+# run_MLL1EM.sh shares L1EM's hardcoded $L1EM_PATH/annotation/L1EM.400.{bed,fa} reference;
+# install our BED + rebuild the index (no-op if run_l1em.sh already did it this session).
+source "$(dirname "${BASH_SOURCE[0]}")/_l1em_reference.sh"
+ensure_l1em_reference "${L1EM_BED}" "${L1EM_PATH}" "${GENOME_FA}" albertem || exit 1
 
 # Copy a persisted (possibly gzipped) filtered mate into the run dir as plain .fq.
 stage_reads() {
@@ -48,8 +53,11 @@ for power in ${POWERS}; do
         echo "[albertem] WARN: no filtered reads for ${base} in ${FILTERED_DIR} (run synthetic_validation) — skipping" >&2
         continue
     fi
+    # Absolute BAM path BEFORE `cd "${out}"` — a relative ${bam} realpath'd from the run dir
+    # resolves to nothing and passes an empty BAM to run_MLL1EM.sh (empty full_counts.txt).
+    abs_bam="$(realpath "${bam}")"
     echo "[albertem] ${base}: ML-L1EM"
-    ( cd "${out}" && bash "${abs_l1em}/run_MLL1EM.sh" "$(realpath "${bam}")" "${abs_l1em}" \
+    ( cd "${out}" && bash "${abs_l1em}/run_MLL1EM.sh" "${abs_bam}" "${abs_l1em}" \
         "${abs_genome}" "${abs_bed}" "$(pwd)" ) > "${out}/MLEM.out" 2> "${out}/MLEM.err" \
         || { echo "[albertem] ${base}: FAILED (see ${out}/MLEM.err)" >&2; exit 1; }
     rm -rf "${out}/split_fqs" "${out}/G_of_R" "${out}/idL1reads"
