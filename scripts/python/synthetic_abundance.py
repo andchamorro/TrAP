@@ -375,16 +375,42 @@ def discover_cells(refdir: str, chrom: str):
     return sorted(cells)
 
 
-# method name → (subdir, filename template relative to <refdir>/<subdir>/<base>/, loader).
-# {base} = ...pair.<fcov>x, {proj} = ...insert_level_P_delprob_D (no .pair suffix).
+# Ordered subdir candidates per salmon variant. The live pipeline writes
+# salmon/{unfiltered,filtered_seqlabel}; archived source runs used salmon/art (plain salmon)
+# and a filtered variant, so both layouts resolve. Override the lists with
+# SALMON_UNFILTERED_SUBDIRS / SALMON_FILTERED_SUBDIRS (os.pathsep-separated) if a run used a
+# different name.
+def _subdir_candidates(env: str, defaults: list) -> list:
+    v = os.environ.get(env)
+    return v.split(os.pathsep) if v else defaults
+
+
+SALMON_UNFILTERED = _subdir_candidates("SALMON_UNFILTERED_SUBDIRS", ["salmon/unfiltered", "salmon/art"])
+SALMON_FILTERED = _subdir_candidates(
+    "SALMON_FILTERED_SUBDIRS", ["salmon/filtered_seqlabel", "salmon/filtered", "salmon/seqlabel"]
+)
+
+# method name → (subdir candidates, filename GLOB relative to <refdir>/<subdir>/<base>/, loader).
+# {base} = ...pair.<fcov>x. The filename is a glob so minor archived-vs-live naming differences
+# resolve (e.g. TEtranscripts writes <chr>.insert_..cntTable in some runs, GRCh38.p14.<chr>… in
+# others — *.cntTable matches both).
 METHODS = {
-    "AlbertSalmon_seqlabel": ("salmon/filtered_seqlabel", "quant.sf", load_salmon),
-    "Salmon": ("salmon/unfiltered", "quant.sf", load_salmon),
-    "L1EM": ("L1EM", "full_counts.txt", load_l1em),
-    "AlbertEM": ("MLEM", "full_counts.txt", load_l1em),
-    "TEtranscripts": ("TEtranscripts", "{proj}.cntTable", load_tecount),
-    "HTseq": ("HTseq", "htseq_counts.csv", load_htseq),
+    "AlbertSalmon_seqlabel": (SALMON_FILTERED, "quant.sf", load_salmon),
+    "Salmon": (SALMON_UNFILTERED, "quant.sf", load_salmon),
+    "L1EM": (["L1EM"], "full_counts.txt", load_l1em),
+    "AlbertEM": (["MLEM"], "full_counts.txt", load_l1em),
+    "TEtranscripts": (["TEtranscripts"], "*.cntTable", load_tecount),
+    "HTseq": (["HTseq"], "htseq_counts.csv", load_htseq),
 }
+
+
+def find_method_file(refdir: str, subdirs: list, base: str, fname_glob: str):
+    """First existing ``<refdir>/<subdir>/<base>/<fname_glob>`` across the subdir candidates."""
+    for sub in subdirs:
+        hits = sorted(glob.glob(f"{refdir}/{sub}/{base}/{fname_glob}"))
+        if hits:
+            return hits[0]
+    return None
 
 
 def subfamily(key: str) -> str:
@@ -499,7 +525,9 @@ def main():
     rows, cells = [], 0
     # Iterate over the validation outputs; pair each with its ground truth — a model-2
     # counts TSV (preferred) or a model-1 insertion BED.
-    qdirs = sorted(glob.glob(f"{args.refdir}/salmon/filtered_seqlabel/*/"))
+    qdirs = []
+    for sub in SALMON_FILTERED:
+        qdirs.extend(sorted(glob.glob(f"{args.refdir}/{sub}/*/")))
     for qdir in qdirs:
         base = os.path.basename(qdir.rstrip("/"))
         # Anchor del_prob as digits.digits so the trailing '.pair.5x' isn't captured.
@@ -548,12 +576,11 @@ def main():
     for (power, dp), gt_path in sorted(gt_map.items()):
         sim = load_simulated_counts(gt_path) if gt_path.endswith(".counts.tsv") else load_simulated_bed(gt_path)
         base = f"GRCh38.p14.{args.chr}.insert_level_{power}_delprob_{dp}.pair.{args.fcov}x"
-        proj = f"GRCh38.p14.{args.chr}.insert_level_{power}_delprob_{dp}"
         bundle = feat_get(power, dp, base) if feat_get else None
         present = False
-        for method, (subdir, fname, loader) in METHODS.items():
-            path = f"{args.refdir}/{subdir}/{base}/{fname.format(proj=proj)}"
-            if not os.path.isfile(path):
+        for method, (subdirs, fname_glob, loader) in METHODS.items():
+            path = find_method_file(args.refdir, subdirs, base, fname_glob)
+            if path is None:
                 continue
             try:
                 vals = loader(path)
