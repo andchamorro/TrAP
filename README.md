@@ -82,23 +82,12 @@ classifier; an *apply* track quantifies a sample with it. The k-mer tokenizer is
 both, and every stage writes a `manifest.json` (git commit, seed, input SHA-256s). Each CLI
 is a Typer app invokable with `python -m <module> <command> --help`.
 
-```
-BUILD  (offline · run once · SLURM)              APPLY  (per sample)
-═══════════════════════════════════              ═══════════════════
-references  (GENCODE v48 + RepeatMasker L1)
-    │
-    ▼
-k-mer tokenizer  (k=17)
-    │
-    ▼
-synthetic dataset ──► MLM pretrain ──► classifier ──┐  trained
-(ART → STAR → label)   (ALBERT base)   (L1HS/L1PA/NEG)│  model
-                                                      ▼
-                              sample FASTQ ──► tokenize ──► GPU inference
-                                                                 │
-                                                                 ▼
-                                LINE-1 abundance ◄── Salmon / EM ◄── filter NEGATIVE
-```
+<p align="center">
+  <img src="docs/figures/workflow_overview.png" width="100%"
+       alt="TrAP two-track workflow: a training core (references → k-mer tokenizer → synthetic reads → ALBERT L1HS/L1PA/NEGATIVE classifier) hands the trained model to a per-sample apply track (FASTQ → tokenize → streaming GPU inference → filter NEGATIVE → Salmon/EM → LINE-1 abundance).">
+</p>
+
+<sub>Rendered by [`scripts/R/workflow_overview.R`](scripts/R/workflow_overview.R). The classifier is trained **directly** on the supervised task — there is no MLM pre-training stage.</sub>
 
 ### 1. Gather references & build the labeled dataset
 

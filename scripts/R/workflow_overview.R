@@ -97,7 +97,7 @@ p <- ggplot() +
   annotate("text", x = 0.7, y = 5.70, hjust = 0, size = 7.75, fontface = "italic",
            color = "#336699", label = "Training Core") +
   annotate("text", x = 1.8, y = 2.70, hjust = 0, size = 7.75, fontface = "italic",
-           color = "#2E7D52", label = "Per sample") +
+           color = "#2E7D52", label = "Per sample quantification") +
   geom_segment(data = kselect, aes(x = x, y = y, xend = xend, yend = yend),
                linetype = "dashed", linewidth = 0.6, color = "#8A8A8A",
                arrow = arrow(length = unit(0.18, "cm"), type = "closed")) +
