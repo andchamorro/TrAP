@@ -76,7 +76,8 @@ box_layers <- function(df, border = "grey35", lwd = 1.7, alpha = 1, radius = uni
 track_bg <- data.frame(
   id   = c("build", "apply"),
   xmin = c(0.55, 1.65), xmax = c(12.05, 17.35),
-  ymin = c(4.30, 1.30), ymax = c(5.75, 2.75),
+  # bottom extended to enclose the stage-NN labels (at node ymin - 0.24); top a touch higher.
+  ymin = c(3.98, 0.98), ymax = c(5.82, 2.82),
   fill = c(COL_TRACK_BUILD, COL_TRACK_APPLY), stringsAsFactors = FALSE
 )
 
@@ -93,10 +94,10 @@ kselect  <- data.frame(x = 5.0,  y = 5.83, xend = 5.0,  yend = 5.52)
 # ── Plot ────────────────────────────────────────────────────────────────────
 p <- ggplot() +
   box_layers(track_bg, border = NA, lwd = 0, alpha = 0.6, radius = unit(12, "pt")) +
-  annotate("text", x = 0.7, y = 5.60, hjust = 0, size = 5.4, fontface = "italic",
-           color = "#336699", label = "BUILD — offline, run once (SLURM 00→40)") +
-  annotate("text", x = 1.8, y = 2.60, hjust = 0, size = 5.4, fontface = "italic",
-           color = "#2E7D52", label = "APPLY — per sample (SLURM 50)") +
+  annotate("text", x = 0.7, y = 5.60, hjust = 0, size = 6.75, fontface = "italic",
+           color = "#336699", label = "Core") +
+  annotate("text", x = 1.8, y = 2.60, hjust = 0, size = 6.75, fontface = "italic",
+           color = "#2E7D52", label = "Per sample") +
   geom_segment(data = kselect, aes(x = x, y = y, xend = xend, yend = yend),
                linetype = "dashed", linewidth = 0.6, color = "#8A8A8A",
                arrow = arrow(length = unit(0.18, "cm"), type = "closed")) +
@@ -106,19 +107,19 @@ p <- ggplot() +
   geom_segment(data = handoff, aes(x = x, y = y, xend = xend, yend = yend),
                arrow = arrow(length = unit(0.26, "cm"), type = "closed"),
                linewidth = 1.1, color = "#7A4FB6", lineend = "round") +
-  annotate("text", x = 10.85, y = 3.5, hjust = 0, size = 4.5, fontface = "italic",
+  annotate("text", x = 10.85, y = 3.5, hjust = 0, size = 5.625, fontface = "italic",
            color = "#7A4FB6", label = "trained model") +
   box_layers(nodes, border = "grey35", lwd = 1.7, radius = unit(8, "pt")) +
   geom_text(data = nodes, aes(x = cx, y = cy, label = label),
-            size = 4.7, lineheight = 1.05, color = "#202020") +
+            size = 5.875, lineheight = 1.05, color = "#202020") +
   geom_text(data = nodes[nodes$stage != "", ],
             aes(x = cx, y = ymin - 0.24, label = stage),
-            size = 3.6, color = "#7A7A7A", fontface = "italic") +
-  annotate("text", x = 8.9, y = 7.55, size = 7.2, fontface = "bold", color = "#111111",
+            size = 4.5, color = "#7A7A7A", fontface = "italic") +
+  annotate("text", x = 8.9, y = 7.55, size = 9.0, fontface = "bold", color = "#111111",
            label = "TrAP Workflow Overview") +
-  annotate("text", x = 8.9, y = 7.15, size = 4.8, color = "#444444",
+  annotate("text", x = 8.9, y = 7.15, size = 6.0, color = "#444444",
            label = "Build a k-mer classifier once, then apply it per sample to quantify LINE-1 — no MLM pre-training") +
-  annotate("text", x = 8.9, y = 0.55, size = 4.3, color = "#666666", fontface = "italic",
+  annotate("text", x = 8.9, y = 0.55, size = 5.375, color = "#666666", fontface = "italic",
            label = "reproducibility band: manifest.json + seed + SHA256 recorded at every stage") +
   coord_cartesian(xlim = c(0, 17.8), ylim = c(0.2, 7.85), clip = "off") +
   theme_void() +
@@ -128,7 +129,7 @@ p <- ggplot() +
 for (ext in c("png", "pdf")) {
   dev <- if (ext == "png") "cairo" else cairo_pdf
   args <- list(filename = file.path(out_dir, paste0("workflow_overview.", ext)),
-               plot = p, width = 20, height = 9, dpi = 300, bg = "white")
+               plot = p, width = 24, height = 9.5, dpi = 300, bg = "white")
   if (ext == "png") args$type <- "cairo"
   do.call(ggsave, args)
 }
