@@ -27,9 +27,12 @@ for transposable-element quantification against RepeatMasker annotations on GRCh
 ## Key features
 
 - **Alignment-free L1 detection** — no reference mapping required at inference time.
-- **k-mer language model** — sequences split into overlapping k-mers (default **k=17**,
-  the entropy/redundancy plateau observed above k=16) and tokenized with **SentencePiece**
-  (32k vocabulary ≈ 10% of all 17-mers, achieving full transcriptome coverage).
+- **Canonical k-mer tokenizer** — sequences split into overlapping k-mers (default **k=17**,
+  the entropy/redundancy plateau above k=16) and mapped **one token per canonical k-mer** by a
+  Salmon/Jellyfish-consistent feature hash (effective vocab **65,541** = 2¹⁶ buckets + specials).
+  It is a **deterministic hash** — no vocabulary training — and replaced the manuscript's
+  SentencePiece tokenizer, which a pre-tokenizer/metaspace mismatch had silently fragmented to
+  ~character level.
 - **Custom ALBERT** — a lightweight factorized-embedding transformer trained **directly** as
   a read classifier (`L1HS`/`L1PA`/`NEGATIVE`). MLM pre-training was evaluated and **dropped**:
   the feature-hashed k-mer vocabulary is unlearnable under a masking objective.
@@ -114,17 +117,23 @@ bash scripts/build_dataset.sh
 > Dataset parameters live in [`config/datasets/l1hs_l1pa2_v48_k17.yaml`](config/datasets/l1hs_l1pa2_v48_k17.yaml).
 > Set `SKIP_BUILD=1` to reuse existing FASTQ and run only the preprocessing steps.
 
-### 2. Train the tokenizer
+### 2. Build the tokenizer
 
-Train a SentencePiece Unigram k-mer tokenizer and wrap it as a HuggingFace
-`PreTrainedTokenizerFast`:
+The production tokenizer is a **canonical, feature-hashed k-mer tokenizer** (Salmon/Jellyfish
+`mer_dna` semantics), wrapped as a HuggingFace `PreTrainedTokenizerFast`. It is a
+**deterministic hash**, so there is nothing to train — just build the index:
 
 ```bash
-python -m trap.loaders.tokenizer train \
-    --corpus data/external/gencode.v48.transcripts.fa.gz \
-    --out models --name tokenizer.gencode.v48.k17.32k \
-    --k 17 --vocab-size 32000
+python -m trap.loaders.tokenizer salmon-index \
+    --out models --name tokenizer.gencode.v48.k17.salmon \
+    --k 17 --n-hash 65536
 ```
+
+> [!NOTE]
+> The subword tokenizers (`train --algorithm {unigram,wordpiece,bpe}`, and the gated `spm`)
+> remain available for ablation, but the SentencePiece Unigram one was found to fragment reads
+> to ~character level and is **not** the default. Set `SALMON_TARGET=1` on the stage-10 job to
+> add an exact L1 target index (conserved canonical k-mers) on top of the hash.
 
 ### 3. Preprocess into HuggingFace datasets
 
@@ -134,7 +143,7 @@ transcript contributes reads to more than one split (prevents read-level leakage
 ```bash
 # Classification (paired reads, transcript-level split)
 python -m trap.utils.preprocessing_sequences classification \
-    --pretrained-model-path models/tokenizer.gencode.v48.k17.32k \
+    --pretrained-model-path models/tokenizer.gencode.v48.k17.salmon \
     --builder data/external/l1_R1.fq --pair data/external/l1_R2.fq \
     --k 17 --split-strategy transcript-level
 ```
@@ -157,8 +166,8 @@ in [`config/training/`](config/training); models are saved to `models/<name>/fin
 
 ```bash
 # Classification — trained directly from a random init (tokenizer + ALBERT config, no MLM checkpoint)
-python -m trap.modeling.train classification albert.l1hs_l1pa2.v48.k17.32k \
-    --pretrained-tokenizer-path models/tokenizer.gencode.v48.k17.32k \
+python -m trap.modeling.train classification albert.l1hs_l1pa2.v48.k17.salmon \
+    --pretrained-tokenizer-path models/tokenizer.gencode.v48.k17.salmon \
     --albert-config-path config/albert_config_k17_v48.json \
     --trainer-config-path config/training/classification_final.json --k 17 --do-eval
 ```
@@ -192,10 +201,10 @@ lighter, fully offline, seeded engine; search spaces live in [`config/tuning/`](
 
 ```bash
 # Local sweep (writes config/training/classification_final.tuned.json)
-python -m trap.modeling.tune classification albert.l1hs_l1pa2.v48.k17.32k \
+python -m trap.modeling.tune classification albert.l1hs_l1pa2.v48.k17.salmon \
     --search-config config/tuning/classification_optuna.yaml \
-    --preprocessing-name gencode.v48.k17.32k/l1hs_l1pa2 \
-    --pretrained-tokenizer-path models/tokenizer.gencode.v48.k17.32k \
+    --preprocessing-name gencode.v48.k17.salmon/l1hs_l1pa2 \
+    --pretrained-tokenizer-path models/tokenizer.gencode.v48.k17.salmon \
     --albert-config-path config/albert_config_k17_v48.json
 ```
 
@@ -209,7 +218,7 @@ reads by their `NEGATIVE`-class score before downstream abundance estimation (Sa
 ```bash
 # GPU batch classification (Accelerate PartialState, rank-aware sharding)
 python -m trap.modeling.quantify run \
-    --pretrained-model-name albert.l1hs_l1pa2.v48.k17.32k \
+    --pretrained-model-name albert.l1hs_l1pa2.v48.k17.salmon \
     --r1 sample_R1.fastq.gz --r2 sample_R2.fastq.gz \
     --output-path reports/quantify/sample --k 17 --batch-size 64
 
@@ -276,7 +285,7 @@ bash scripts/slurm/submit_tuning.sh              # optional Optuna sweeps
 ```
 trap/                 # Python package
 ├── config/           # path constants, pydantic schemas, manifest writer
-├── loaders/          # GenomeDataset, SentencePiece/WordPiece tokenizer
+├── loaders/          # GenomeDataset, canonical k-mer (Salmon) tokenizer + subword variants
 ├── modeling/         # train, tune, predict, quantify, postprocessing, ALBERT
 └── utils/            # kmer, io, dna2bit, preprocessing_sequences, seeding
 config/               # albert_config_*, training/, tuning/, datasets/ (JSON + YAML)
@@ -294,7 +303,7 @@ manuscript/  docs/  notebooks/  reports/
 
 | Path | Purpose |
 |---|---|
-| `config/albert_config_k17_v48.json` | ALBERT architecture (k=17, vocab 32k, max position 1280) |
+| `config/albert_config_k17_v48.json` | ALBERT architecture (k=17, vocab 65,541 = Salmon hash, max position 1280) |
 | `config/training/classification_final.json` | `TrainingArguments` (seed 3469, bf16); `mlm.json` is dormant (MLM dropped) |
 | `config/tuning/classification_optuna.yaml` | Optuna search space (classification) |
 | `config/datasets/l1hs_l1pa2_v48_k17.yaml` | ART/STAR/split parameters |
@@ -326,14 +335,14 @@ python -m trap.loaders.tokenizer train ... --verbosity detailed  # override per 
 2026-05-31 12:00:00 | STAGE   | [tokenizer:train] algorithm=unigram k=17 vocab_size=32,000
 2026-05-31 12:00:00 | STAGE   | [tokenizer:train] corpus loaded — 87,324 sequences
 2026-05-31 12:00:00 | STAGE   | [tokenizer:train] training started — 87,324 seqs
-2026-05-31 12:00:42 | STAGE   | [tokenizer:train] done — elapsed=42.1 s → models/tokenizer.gencode.v48.k17.32k
-2026-05-31 12:00:42 | SUCCESS | Tokenizer + manifest written to models/tokenizer.gencode.v48.k17.32k
+2026-05-31 12:00:42 | STAGE   | [tokenizer:train] done — elapsed=42.1 s → models/tokenizer.gencode.v48.k17.unigram
+2026-05-31 12:00:42 | SUCCESS | Tokenizer + manifest written to models/tokenizer.gencode.v48.k17.unigram
 ```
 
 **Expected output for `--verbosity off`** (default):
 
 ```
-2026-05-31 12:00:42 | SUCCESS | Tokenizer + manifest written to models/tokenizer.gencode.v48.k17.32k
+2026-05-31 12:00:42 | SUCCESS | Tokenizer + manifest written to models/tokenizer.gencode.v48.k17.unigram
 ```
 
 The verbosity level can also be set in any config file (`TokenizerConfigSchema`,
