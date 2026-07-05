@@ -46,7 +46,7 @@ install_missing <- function(pkgs) {
                           type = "source")
 }
 
-# Packages used by TrAP R notebooks (notebooks/5.01-*).
+# Packages used by TrAP R notebooks (notebooks/5.0x-*) and scripts/R/.
 cran_packages <- c(
   "data.table",
   "ggplot2",
