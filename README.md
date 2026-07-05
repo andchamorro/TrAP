@@ -20,8 +20,9 @@ for transposable-element quantification against RepeatMasker annotations on GRCh
 > live alongside their code — most importantly **[`scripts/slurm/README.md`](scripts/slurm/README.md)**
 > for the HPC reproduction pipeline. The methodology mirrors the manuscript
 > (*A Transformers Analysis Pipeline to Evaluate Genome LINE-1 Sequence Content*); terms
-> such as ALBERT, MLM + SOP, k-mer entropy, SentencePiece coverage, and 5′RACE validation
-> are used here with the same meaning.
+> such as ALBERT, k-mer entropy, and 5′RACE validation are used here with the same meaning.
+> One deliberate departure: the manuscript's ALBERT was MLM-pretrained; TrAP trains the
+> classifier **directly** (MLM pre-training was evaluated and dropped — see step 4).
 
 ## Key features
 
@@ -29,8 +30,9 @@ for transposable-element quantification against RepeatMasker annotations on GRCh
 - **k-mer language model** — sequences split into overlapping k-mers (default **k=17**,
   the entropy/redundancy plateau observed above k=16) and tokenized with **SentencePiece**
   (32k vocabulary ≈ 10% of all 17-mers, achieving full transcriptome coverage).
-- **Custom ALBERT** — masked-language pretraining (MLM + SOP) followed by sequence
-  classification, using factorized embeddings to stay lightweight.
+- **Custom ALBERT** — a lightweight factorized-embedding transformer trained **directly** as
+  a read classifier (`L1HS`/`L1PA`/`NEGATIVE`). MLM pre-training was evaluated and **dropped**:
+  the feature-hashed k-mer vocabulary is unlearnable under a masking objective.
 - **Reproducible by construction** — global seeding, per-run `manifest.json` (git commit,
   seed, input SHA-256s, throughput), and fully offline HF execution on HPC.
 - **Scales on SLURM** — multi-GPU training via HuggingFace Accelerate and an
@@ -127,8 +129,7 @@ python -m trap.loaders.tokenizer train \
 ### 3. Preprocess into HuggingFace datasets
 
 Tokenize and split. The **classification** dataset uses a **transcript-level split** so no
-transcript contributes reads to more than one split (prevents read-level leakage); the
-**masking** dataset is the chunked MLM corpus.
+transcript contributes reads to more than one split (prevents read-level leakage).
 
 ```bash
 # Classification (paired reads, transcript-level split)
@@ -136,67 +137,66 @@ python -m trap.utils.preprocessing_sequences classification \
     --pretrained-model-path models/tokenizer.gencode.v48.k17.32k \
     --builder data/external/l1_R1.fq --pair data/external/l1_R2.fq \
     --k 17 --split-strategy transcript-level
-
-# Masked-language-model corpus
-python -m trap.utils.preprocessing_sequences masking \
-    --pretrained-model-path models/tokenizer.gencode.v48.k17.32k \
-    --builder data/external/gencode.v48.transcripts.fa.gz --k 17
 ```
 
-### 4. Train the model
+> [!NOTE]
+> The `masking` sub-command (the chunked MLM corpus) still exists but is **not part of the
+> active pipeline** — MLM pre-training was dropped (step 4).
 
-Three sub-commands: `masking` (MLM pretraining, minimizes MLM + SOP loss, monitored by
-masked-token accuracy/perplexity), `classification` (fine-tune `AlbertForSequenceClassification`),
-and `distiller` (knowledge distillation). Configs are JSON in [`config/training/`](config/training);
-models are saved to `models/<name>/final/`.
+### 4. Train the classifier
+
+The classifier is trained **directly** on the supervised task — there is **no MLM
+pre-training**. MLM was evaluated and dropped: over the feature-hashed k-mer vocabulary the
+masked-token objective is provably unlearnable (a 35 h run pinned at `ln(vocab)` with ~0
+masked-token accuracy — adjacent token IDs are decorrelated by the avalanche hash), so
+pre-training was null scaffolding. The shelved MLM stages live under
+[`scripts/slurm/legacy/mlm/`](scripts/slurm/legacy/mlm). `trap.modeling.train` exposes
+`classification` (fine-tune `AlbertForSequenceClassification` from a random init), `distiller`
+(knowledge distillation), and a dormant `masking` (MLM, kept for the record). Configs are JSON
+in [`config/training/`](config/training); models are saved to `models/<name>/final/`.
 
 ```bash
-# MLM pretraining
-python -m trap.modeling.train masking albert.gencode.v48.k17.32k \
+# Classification — trained directly from a random init (tokenizer + ALBERT config, no MLM checkpoint)
+python -m trap.modeling.train classification albert.l1hs_l1pa2.v48.k17.32k \
     --pretrained-tokenizer-path models/tokenizer.gencode.v48.k17.32k \
     --albert-config-path config/albert_config_k17_v48.json \
-    --trainer-config-path config/training/mlm.json --k 17
-
-# Classification fine-tuning on the MLM checkpoint
-python -m trap.modeling.train classification albert.l1hs_l1pa2.v48.k17.32k \
-    --pretrained-model-path albert.gencode.v48.k17.32k \
     --trainer-config-path config/training/classification_final.json --k 17 --do-eval
 ```
 
 For multi-GPU, wrap with Accelerate: `accelerate launch -m trap.modeling.train ...`.
 
 > [!TIP]
-> **Smoke-test before a long run.** MLM pretraining is a multi-day job, and a bad
-> config (e.g. a fine-tuning learning rate used for from-scratch training) can train
-> for hours while learning *nothing*. A fast pre-flight gate trains on a 1k-row subset
-> and fails unless the loss drops below the uniform-random baseline `ln(vocab)`:
+> **Smoke-test before a long run.** Classification fine-tuning is a long job, and a bad config
+> (e.g. an inappropriate learning rate) can train for hours while learning *nothing* — exactly
+> how the null MLM stage went unnoticed for a 35 h run. A fast pre-flight gate trains on a
+> 1k-row subset and fails unless the loss drops below the uniform-random baseline:
 >
 > ```bash
 > # ~2 s, CPU, no data needed — proves the training code can reduce loss
 > pytest tests/modeling/test_smoke_training.py -v
 >
 > # ~10 min, 1 GPU — validates the real config on real data (HPC)
-> sbatch scripts/slurm/24_mlm_smoke.slurm            # gates MLM pretraining
-> sbatch scripts/slurm/34_classification_smoke.slurm # gates classification
+> sbatch scripts/slurm/34_classification_smoke.slurm  # gates classification
 > ```
 >
-> On the SLURM pipeline these gates run automatically before the expensive stages;
-> a failed gate stops the chain. See [`scripts/slurm/README.md`](scripts/slurm/README.md#pre-flight-smoke-gates-24_mlm_smoke-34_classification_smoke).
+> On the SLURM pipeline this gate runs automatically before the expensive stage; a failed gate
+> stops the chain. (The retired MLM smoke gate lives in `scripts/slurm/legacy/mlm/`.) See
+> [`scripts/slurm/README.md`](scripts/slurm/README.md).
 
 ### 5. (Optional) Tune hyperparameters
 
 Hyperparameter search uses **Optuna + Hyperband** (`Trainer.hyperparameter_search`),
-optimizing the same objectives as the manuscript — validation MLM loss for pretraining and
-`eval_f1` for classification. This replaces the original Ray Tune / Population-Based
-Training recipe with a lighter, fully offline, seeded engine; search spaces live in
-[`config/tuning/`](config/tuning).
+optimizing `eval_f1` for classification (the MLM tuning stage is retired with MLM
+pre-training). This replaces the original Ray Tune / Population-Based Training recipe with a
+lighter, fully offline, seeded engine; search spaces live in [`config/tuning/`](config/tuning).
 
 ```bash
 # Local sweep (writes config/training/classification_final.tuned.json)
 python -m trap.modeling.tune classification albert.l1hs_l1pa2.v48.k17.32k \
     --search-config config/tuning/classification_optuna.yaml \
     --preprocessing-name gencode.v48.k17.32k/l1hs_l1pa2 \
-    --pretrained-model-path albert.gencode.v48.k17.32k
+    --pretrained-tokenizer-path models/tokenizer.gencode.v48.k17.32k \
+    --albert-config-path config/albert_config_k17_v48.json
 ```
 
 The winning `*.tuned.json` is then passed as `--trainer-config-path` to stage 4.
@@ -295,8 +295,8 @@ manuscript/  docs/  notebooks/  reports/
 | Path | Purpose |
 |---|---|
 | `config/albert_config_k17_v48.json` | ALBERT architecture (k=17, vocab 32k, max position 1280) |
-| `config/training/{mlm,classification_final}.json` | `TrainingArguments` (seed 3469, bf16) |
-| `config/tuning/{mlm,classification}_optuna.yaml` | Optuna search spaces |
+| `config/training/classification_final.json` | `TrainingArguments` (seed 3469, bf16); `mlm.json` is dormant (MLM dropped) |
+| `config/tuning/classification_optuna.yaml` | Optuna search space (classification) |
 | `config/datasets/l1hs_l1pa2_v48_k17.yaml` | ART/STAR/split parameters |
 
 Training and quantification run **offline**: `HF_DATASETS_OFFLINE=1`,
@@ -310,7 +310,7 @@ invocation or export `TRAP_VERBOSITY` for the whole session:
 
 ```bash
 export TRAP_VERBOSITY=normal   # stage progress for all commands in this shell
-python -m trap.modeling.train masking ...         # picks up env var
+python -m trap.modeling.train classification ...  # picks up env var
 python -m trap.loaders.tokenizer train ... --verbosity detailed  # override per command
 ```
 
