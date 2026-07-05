@@ -24,6 +24,7 @@ config/hpc/*.local.yaml
 
 # Analysis outputs
 /results/
+/output/
 
 # Reports
 /reports/
