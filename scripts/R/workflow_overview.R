@@ -7,16 +7,16 @@
 # Rounded boxes use grid::roundrectGrob so no ggforce is required — ggforce's compiled deps
 # (tweenr/polyclip/systemfonts) do not build from source in the conda toolchain.
 #
-# NOTE: there is deliberately NO MLM pre-training node — the ALBERT classifier is trained
-# directly on the supervised task (MLM was dropped; the hashed k-mer vocab is unlearnable
-# under a masking objective). Run from the repo root:  Rscript scripts/R/workflow_overview.R
+# Run from the repo root:  Rscript scripts/R/workflow_overview.R
 
 suppressPackageStartupMessages({
   library(ggplot2)
   library(grid)
 })
 
-out_dir <- file.path("reports", "figures")
+# Committed documentation asset (referenced from docs/ and README.md), not a gitignored
+# reports/ figure. Override with WORKFLOW_FIG_DIR if needed.
+out_dir <- Sys.getenv("WORKFLOW_FIG_DIR", file.path("docs", "figures"))
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
 # ── Colours (soft palette; one hue per role) ────────────────────────────────
@@ -36,8 +36,8 @@ nodes <- data.frame(
   id    = 1:10,
   cx    = c(2.2, 5.0, 7.8, 10.6,  3.0, 6.8, 10.6, 13.4, 15.9,  5.0),
   cy    = c(5.0, 5.0, 5.0, 5.0,   2.0, 2.0, 2.0,  2.0,  2.0,   6.25),
-  w     = c(1.25, 1.25, 1.20, 1.30,  1.10, 1.10, 1.30, 1.15, 1.25,  1.40),
-  h     = c(0.50, 0.50, 0.50, 0.50,  0.50, 0.50, 0.50, 0.50, 0.50,  0.40),
+  w     = c(1.25, 1.25, 1.20, 1.30,  1.10, 1.10, 1.30, 1.15, 1.25,  1.45),
+  h     = c(0.50, 0.50, 0.50, 0.50,  0.50, 0.50, 0.50, 0.50, 0.50,  0.42),
   label = c(
     "GENCODE v48 transcripts\n+ RepeatMasker L1",
     "Canonical k-mer tokenizer\n(k = 17, 1 token / k-mer)",
@@ -94,9 +94,9 @@ kselect  <- data.frame(x = 5.0,  y = 5.83, xend = 5.0,  yend = 5.52)
 # ── Plot ────────────────────────────────────────────────────────────────────
 p <- ggplot() +
   box_layers(track_bg, border = NA, lwd = 0, alpha = 0.6, radius = unit(12, "pt")) +
-  annotate("text", x = 0.7, y = 5.60, hjust = 0, size = 6.75, fontface = "italic",
-           color = "#336699", label = "Core") +
-  annotate("text", x = 1.8, y = 2.60, hjust = 0, size = 6.75, fontface = "italic",
+  annotate("text", x = 0.7, y = 5.70, hjust = 0, size = 7.75, fontface = "italic",
+           color = "#336699", label = "Training Core") +
+  annotate("text", x = 1.8, y = 2.70, hjust = 0, size = 7.75, fontface = "italic",
            color = "#2E7D52", label = "Per sample") +
   geom_segment(data = kselect, aes(x = x, y = y, xend = xend, yend = yend),
                linetype = "dashed", linewidth = 0.6, color = "#8A8A8A",
@@ -114,13 +114,11 @@ p <- ggplot() +
             size = 5.875, lineheight = 1.05, color = "#202020") +
   geom_text(data = nodes[nodes$stage != "", ],
             aes(x = cx, y = ymin - 0.24, label = stage),
-            size = 4.5, color = "#7A7A7A", fontface = "italic") +
+            size = 6.5, color = "#7A7A7A", fontface = "italic") +
   annotate("text", x = 8.9, y = 7.55, size = 9.0, fontface = "bold", color = "#111111",
            label = "TrAP Workflow Overview") +
   annotate("text", x = 8.9, y = 7.15, size = 6.0, color = "#444444",
-           label = "Build a k-mer classifier once, then apply it per sample to quantify LINE-1 — no MLM pre-training") +
-  annotate("text", x = 8.9, y = 0.55, size = 5.375, color = "#666666", fontface = "italic",
-           label = "reproducibility band: manifest.json + seed + SHA256 recorded at every stage") +
+           label = "Build a k-mer classifier once, then apply it per sample to quantify LINE-1") +
   coord_cartesian(xlim = c(0, 17.8), ylim = c(0.2, 7.85), clip = "off") +
   theme_void() +
   theme(plot.margin = margin(16, 16, 16, 16))
