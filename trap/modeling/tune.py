@@ -566,5 +566,23 @@ def finalize(
     _write_tuned_config(search, best.params, out_path, meta)
 
 
+@app.command()
+def export(
+    study_name: str = typer.Option(..., help="Shared study name"),
+    storage: Path = typer.Option(..., help="JournalFileBackend path of the shared study"),
+    out: Path = typer.Option(..., help="Output CSV path"),
+):
+    """Export all trials from a study to a CSV file for downstream HPO analysis."""
+    import pandas as pd
+
+    storage_obj = _make_storage(storage)
+    study = optuna.load_study(study_name=study_name, storage=storage_obj)
+    df = study.trials_dataframe()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out, index=False)
+    completed = (df["state"] == "COMPLETE").sum()
+    logger.success(f"Exported {len(df)} trials ({completed} COMPLETE) → {out}")
+
+
 if __name__ == "__main__":
     app()
