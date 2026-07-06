@@ -98,7 +98,7 @@ bash scripts/slurm/submit_synthetic_validation.sh
 Per the manuscript figure convention, a Python step emits
 `results/synthetic_validation/<experiment>/abundance.csv` (§0, e.g.
 `l1-host-insert/`) and an R notebook
-(`notebooks/5.02-ach-synthetic-e2e-validation.ipynb`, `ir-trap` kernel,
+(`notebooks/5.03-ach-synthetic-e2e-validation.ipynb`, `ir-trap` kernel,
 `data.table` + `ggplot2`) renders the R² comparison to
 `reports/figures/synthetic_validation/`.
 

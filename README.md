@@ -265,7 +265,7 @@ bash scripts/slurm/submit_synthetic_validation.sh
 > [!NOTE]
 > The legacy generator set no random seed, so this re-creation is a **new, seeded draw**; compare
 > methods at the **R²-vs-Simulated** level (stable across draws). Figures migrate to R/ggplot
-> (notebook `5.02`, consuming `results/synthetic_validation/*.csv`). See
+> (notebook `5.03`, consuming `results/synthetic_validation/*.csv`). See
 > [`docs/guides/synthetic_validation.md`](docs/guides/synthetic_validation.md).
 
 ## Reproduce on HPC (Grace)
