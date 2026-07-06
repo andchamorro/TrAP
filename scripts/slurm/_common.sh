@@ -246,16 +246,19 @@ export GENCODE_FASTA="${GENCODE_FASTA:-${DATA_EXTERNAL}/gencode.v48.transcripts.
 export L1_CORPUS="${L1_CORPUS:-${DATA_EXTERNAL}/GCF_000001405.40_GRCh38.p14_rm.LINE1.gencode.v48.fa}"
 export REPEATMASKER_GFF="${REPEATMASKER_GFF:-${DATA_EXTERNAL}/GCF_000001405.40_GRCh38.p14_rm.gff}"
 
-# Names
-export TOKENIZER_NAME="${TOKENIZER_NAME:-tokenizer.gencode.v48.k17.32k}"
-export MLM_PROCESSING_NAME="${MLM_PROCESSING_NAME:-gencode.v48.k17.32k}"
-export PROCESSING_NAME="${PROCESSING_NAME:-gencode.v48.k17.32k/l1hs_l1pa2}"
-export MODEL_MLM="${MODEL_MLM:-albert.gencode.v48.k17.32k}"
-export MODEL_CLS="${MODEL_CLS:-albert.l1hs_l1pa2.v48.k17.32k}"
+# Names — bare defaults track the WINNING model (config/runs/salmon_seqlabel.yaml):
+# the canonical Salmon k-mer tokenizer + the sequence-anchored L1HS/L1PA/NEGATIVE
+# classifier. These are fallbacks only; any --run-config still overrides them (e.g.
+# salmon.yaml for the coordinate-label model, spm.yaml for the SPM experiment).
+export TOKENIZER_NAME="${TOKENIZER_NAME:-tokenizer.gencode.v48.k17.salmon}"
+export MLM_PROCESSING_NAME="${MLM_PROCESSING_NAME:-gencode.v48.k17.salmon}"
+export PROCESSING_NAME="${PROCESSING_NAME:-gencode.v48.k17.salmon.seqlabel/l1hs_l1pa2}"
+export MODEL_MLM="${MODEL_MLM:-albert.gencode.v48.k17.salmon}"
+export MODEL_CLS="${MODEL_CLS:-albert.l1hs_l1pa2.v48.k17.salmon.seqlabel}"
 
-# L1 paired FASTQ produced by the ART->STAR->bedtools dataset stage
-export L1_R1="${L1_R1:-${DATA_EXTERNAL}/l1hs_l1pa2_negative.5x_R1.fq}"
-export L1_R2="${L1_R2:-${DATA_EXTERNAL}/l1hs_l1pa2_negative.5x_R2.fq}"
+# L1 paired FASTQ produced by the ART->STAR->bedtools dataset stage (seqlabel build).
+export L1_R1="${L1_R1:-${DATA_EXTERNAL}/l1hs_l1pa2_negative.seqlabel.5x_R1.fq}"
+export L1_R2="${L1_R2:-${DATA_EXTERNAL}/l1hs_l1pa2_negative.seqlabel.5x_R2.fq}"
 
 # Config files
 export ALBERT_CONFIG="${ALBERT_CONFIG:-${REPO_ROOT}/config/albert_config_k17_v48.json}"

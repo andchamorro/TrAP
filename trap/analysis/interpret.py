@@ -61,6 +61,15 @@ from trap.utils.labels import task_label
 
 app = typer.Typer(add_completion=False, help="K-mer attribution + L1.3 domain mapping.")
 
+
+@app.callback()
+def _main():
+    """Force sub-command dispatch so ``… interpret attribute`` is invoked by name.
+
+    (A single-command Typer app otherwise collapses and rejects the command name.)
+    """
+
+
 # Reads whose primary L1.3 alignment is at least this good get a consensus
 # coordinate; weaker ones are labelled 'unaligned' (mostly NEGATIVE + divergent L1).
 _MIN_IDENTITY = 0.70
