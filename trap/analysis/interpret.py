@@ -168,7 +168,10 @@ def attribute(
     set_global_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tokenizer = load_kmer_tokenizer(str(tokenizer_path), max_position_embeddings)
-    model = AlbertForSequenceClassification.from_pretrained(str(model_path)).to(device).eval()
+    # attn_implementation="eager" required — sdpa silently drops output_attentions.
+    model = AlbertForSequenceClassification.from_pretrained(
+        str(model_path), attn_implementation="eager"
+    ).to(device).eval()
     id2label = {i: model.config.id2label[i] for i in range(model.config.num_labels)}
     classes = [id2label[i] for i in range(len(id2label))]
     label2id = {v: i for i, v in id2label.items()}
