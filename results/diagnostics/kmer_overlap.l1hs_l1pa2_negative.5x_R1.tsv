@@ -1,6 +1,0 @@
-group	reads	present%(c>=1)	c>=10%	c>=100%
-L1HS (young)	5000	16.1	4.8	3.5
-L1PA2-6 (young)	5000	13.5	3.0	1.9
-L1PA7+/L1P (older)	5000	13.3	2.1	1.1
-L1M*/L1ME* (old)	5000	12.4	1.1	0.4
-NEGATIVE	5000	9.0	0.5	0.1
