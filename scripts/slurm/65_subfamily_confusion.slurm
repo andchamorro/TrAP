@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=trap_subfamily_confusion
+#SBATCH --job-name=trap_65_subfamily_confusion
 #SBATCH --time=01:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -23,7 +23,7 @@
 # Salmon deploy run suffixes the class with its lr/epochs, so pass the exact class
 # that produced macro-F1 0.664 via SALMON_MODEL_CLS:
 #   SALMON_MODEL_CLS=albert.l1hs_l1pa2.v48.k17.salmon.lr5e5.e12 \
-#     sbatch scripts/slurm/subfamily_confusion.slurm
+#     sbatch scripts/slurm/65_subfamily_confusion.slurm
 # (SPM_MODEL_CLS / *_TOK_NAME are overridable the same way.)
 
 export TRAP_SPM_EXPERIMENTAL=1                       # to load the gated .spm tokenizer

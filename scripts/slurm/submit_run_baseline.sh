@@ -13,7 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
-SLURM="scripts/slurm/run_baseline.slurm"
+SLURM="scripts/slurm/63_run_baseline.slurm"
 METHOD="${METHOD:?set METHOD=salmon|star|l1em|tetranscripts|htseq|albertem}"
 export METHOD
 
@@ -32,7 +32,7 @@ N=$(( ${#_P[@]} * ${#_D[@]} ))
 THROTTLE="${THROTTLE:-6}"
 
 # Per-method resource profile — salmon/htseq are tiny (observed: salmon ~10 s CPU, <5 MB);
-# STAR/L1EM are heavy. sbatch CLI overrides the static #SBATCH in run_baseline.slurm.
+# STAR/L1EM are heavy. sbatch CLI overrides the static #SBATCH in 63_run_baseline.slurm.
 # Override any with CPUS=/MEM=/TIME=.
 d_prep_mem=""   # star: the index build (prep) needs more RAM than the per-cell align tasks
 case "${METHOD}" in

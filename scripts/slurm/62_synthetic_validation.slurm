@@ -20,9 +20,9 @@
 # Single sample first (verify quant.sf parses), then fan out over POWER 5..13 ×
 # DELPROB {0.000,0.025,0.050,0.075,0.100}.  Does NOT touch L1EM / plain-salmon results.
 #
-#   POWER=8 DELPROB=0.025 sbatch scripts/slurm/synthetic_validation.slurm
+#   POWER=8 DELPROB=0.025 sbatch scripts/slurm/62_synthetic_validation.slurm
 #   # fan-out: for p in $(seq 5 13); do for d in 0.000 0.025 0.050 0.075 0.100; do
-#   #   POWER=$p DELPROB=$d sbatch scripts/slurm/synthetic_validation.slurm ; done ; done
+#   #   POWER=$p DELPROB=$d sbatch scripts/slurm/62_synthetic_validation.slurm ; done ; done
 
 export TRAP_VERBOSITY="${TRAP_VERBOSITY:-detailed}"
 source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"

@@ -14,7 +14,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
-SLURM="scripts/slurm/synthetic_validation.slurm"
+SLURM="scripts/slurm/62_synthetic_validation.slurm"
 
 DRY_RUN=0
 passthru=()

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=trap_util_kmer_overlap
+#SBATCH --job-name=trap_71_kmer_overlap
 #SBATCH --time=00:30:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -22,8 +22,8 @@
 #   CONSERVED=1,10,100  (count thresholds)
 #
 # Usage:
-#   sbatch scripts/slurm/util_kmer_overlap.slurm
-#   READS="${L1_R2}" sbatch scripts/slurm/util_kmer_overlap.slurm   # check R2 instead
+#   sbatch scripts/slurm/71_kmer_overlap.slurm
+#   READS="${L1_R2}" sbatch scripts/slurm/71_kmer_overlap.slurm   # check R2 instead
 
 set -euo pipefail
 source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"

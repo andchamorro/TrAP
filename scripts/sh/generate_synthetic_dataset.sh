@@ -169,4 +169,4 @@ done
 echo "[gen] grid: ${n_done} generated, ${n_skip} skipped"
 
 echo "[gen] done → ${OUTPUT_DIR}  (art/*.fq.gz, ground-truth ${SIM_MODEL/transcript/*.counts.tsv}${SIM_MODEL/insert/*.bed}, l1_synthetic.Index)"
-echo "[gen] next: validate — POWER=8 DELPROB=0.025 REFDIR=${OUTPUT_DIR} L1_INDEX=${L1_INDEX} sbatch scripts/slurm/synthetic_validation.slurm"
+echo "[gen] next: validate — POWER=8 DELPROB=0.025 REFDIR=${OUTPUT_DIR} L1_INDEX=${L1_INDEX} sbatch scripts/slurm/62_synthetic_validation.slurm"

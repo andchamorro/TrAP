@@ -44,4 +44,4 @@ command -v seqkit >/dev/null && seqkit stats "${OUT}"
 echo "[l1ref] subfamilies (top):"
 grep '^>' "${OUT}" | sed 's/^>//' | sort | uniq -c | sort -rn | head -20
 echo "[l1ref] done -> ${OUT}"
-echo "[l1ref] use:  CROSSCHECK_LIB=${OUT}  (build_seqlabel.slurm or relabel_by_sequence run)"
+echo "[l1ref] use:  CROSSCHECK_LIB=${OUT}  (22_build_seqlabel.slurm or relabel_by_sequence run)"
