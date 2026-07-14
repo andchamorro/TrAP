@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=trap_interpret
+#SBATCH --job-name=trap_70_interpret
 #SBATCH --time=02:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -25,11 +25,11 @@
 # Defaults to the SEQUENCE-anchored classifier (labels reflect real L1 content),
 # which is the defensible model for a biological-meaning claim. Override the model
 # / FASTQ via the env vars below:
-#   sbatch scripts/slurm/interpret.slurm                       # seqlabel (default)
+#   sbatch scripts/slurm/70_interpret.slurm                       # seqlabel (default)
 #   MODEL_CLS=albert.l1hs_l1pa2.v48.k17.salmon \
 #     L1_R1=data/external/l1hs_l1pa2_negative.5x_R1.fq \
 #     L1_R2=data/external/l1hs_l1pa2_negative.5x_R2.fq \
-#     sbatch scripts/slurm/interpret.slurm                     # coordinate-label model
+#     sbatch scripts/slurm/70_interpret.slurm                     # coordinate-label model
 
 source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"
 load_gpu_modules

@@ -2,7 +2,7 @@
 # Baseline method: AlbertEM — the seqlabel classifier filter followed by the EM algorithm
 # (ML-L1EM). Refactor of notebooks/scripts/draft/run_mlem_mut.sh (run_MLL1EM.sh).
 # Requires: align_star.sh (the BAM) and the classifier-filtered reads that
-# synthetic_validation.slurm persists to <OUTPUT_DIR>/filtered_seqlabel/<base>/{1,2}.fq[.gz].
+# 62_synthetic_validation.slurm persists to <OUTPUT_DIR>/filtered_seqlabel/<base>/{1,2}.fq[.gz].
 #
 #   L1EM_PATH=/path/to/L1EM bash scripts/sh/run_albertem.sh
 set -euo pipefail

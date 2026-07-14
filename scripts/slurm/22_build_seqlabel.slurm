@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=trap_build_seqlabel
+#SBATCH --job-name=trap_22_build_seqlabel
 #SBATCH --time=08:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -17,11 +17,11 @@
 # After this, run preprocessing with the EXISTING 20_dataset.slurm reusing these
 # FASTQ (SKIP_BUILD=1) into a NEW *.seqlabel processing name — see B2-cont below.
 #
-#   sbatch scripts/slurm/build_seqlabel.slurm                       # full build (~few h)
+#   sbatch scripts/slurm/22_build_seqlabel.slurm                       # full build (~few h)
 # CREDITS: SUs = cores × actual_runtime, so a fast dry-run is cheap — request fewer
 # cores + time for it (and the chrom check now fails in seconds on a misconfig):
 #   POS_COV=1 NEG_COV=1 sbatch --time=02:00:00 --cpus-per-task=16 --mem=64G \
-#     scripts/slurm/build_seqlabel.slurm
+#     scripts/slurm/22_build_seqlabel.slurm
 #
 # Knobs: POS_COV / NEG_COV (per-stream ART coverage), STRICT_FRAC (default 0.5),
 # MAX_DIV (default 100; e.g. 10 for young-only L1), CROSSCHECK_LIB (B0 library).

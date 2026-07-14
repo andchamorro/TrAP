@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=trap_b4_compare
+#SBATCH --job-name=trap_64_baseline_compare
 #SBATCH --time=03:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -22,7 +22,7 @@
 # resampled to deployment priors), which now reports BOTH the filter purity/yield
 # frontier AND 3-class per-class/macro-F1.
 #
-#   sbatch scripts/slurm/b4_compare.slurm
+#   sbatch scripts/slurm/64_baseline_compare.slurm
 
 export TRAP_SPM_EXPERIMENTAL=1
 export TRAP_VERBOSITY="${TRAP_VERBOSITY:-detailed}"

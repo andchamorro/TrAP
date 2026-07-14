@@ -87,7 +87,7 @@ present, else decompresses `.fq.gz` once into `WORK` (`DECOMPRESS=1`, default; s
 
 ```bash
 # one sample (single-cell mode):
-POWER=8 DELPROB=0.025 sbatch scripts/slurm/synthetic_validation.slurm
+POWER=8 DELPROB=0.025 sbatch scripts/slurm/62_synthetic_validation.slurm
 # full grid as a per-cell SLURM array (recommended):
 bash scripts/slurm/submit_synthetic_validation.sh
 #   bash scripts/slurm/submit_synthetic_validation.sh --dry-run   # preview the array

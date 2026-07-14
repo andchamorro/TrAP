@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=trap_generate_synthetic
+#SBATCH --job-name=trap_60_generate_synthetic
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -19,8 +19,8 @@
 # Recommended entry chains prep → array (afterok) and sizes --array to the grid:
 #   bash scripts/slurm/submit_generate_synthetic.sh
 # Direct use:
-#   PREP_ONLY=1 sbatch --array=0 scripts/slurm/generate_synthetic.slurm   # shared inputs only
-#   sbatch scripts/slurm/generate_synthetic.slurm                         # array (assumes prep done)
+#   PREP_ONLY=1 sbatch --array=0 scripts/slurm/60_generate_synthetic.slurm   # shared inputs only
+#   sbatch scripts/slurm/60_generate_synthetic.slurm                         # array (assumes prep done)
 #
 # Options (env): POWERS, DELPROBS, FCOV, SEED, L1_MIN_LEN, L1_MAX_LEN, CHR, OUTPUT_DIR,
 #   CHR1_TRANSCRIPTS, GENCODE_GTF, SKIP_EXISTING, KEEP_FASTA, PREP_ONLY, FORCE_PREP, DRY_RUN,

@@ -257,7 +257,7 @@ The grid is insertion level 2⁵–2¹³ × deletion probability {0–0.1} (45 s
 
 ```bash
 # one sample:
-POWER=8 DELPROB=0.025 sbatch scripts/slurm/synthetic_validation.slurm
+POWER=8 DELPROB=0.025 sbatch scripts/slurm/62_synthetic_validation.slurm
 # or the full grid as a per-cell SLURM array:
 bash scripts/slurm/submit_synthetic_validation.sh
 ```
