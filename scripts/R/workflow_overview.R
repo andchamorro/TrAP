@@ -52,7 +52,7 @@ nodes <- data.frame(
   ),
   fill  = c(COL_INPUT, COL_TOK, COL_DATA, COL_MODEL, COL_INPUT,
             COL_TOK, COL_INFER, COL_FILTER, COL_OUT, COL_AUX),
-  stage = c("stage 00", "stage 10", "stage 20", "stage 40", "", "", "stage 50", "", "", ""),
+  stage = c("stage 00", "stage 10", "stage 20", "stage 30", "", "", "stage 40", "", "", ""),
   stringsAsFactors = FALSE
 )
 nodes$xmin <- nodes$cx - nodes$w
