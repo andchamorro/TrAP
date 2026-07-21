@@ -42,6 +42,10 @@ config/hpc/*.local.yaml
 # Mac OS-specific storage files
 .DS_Store
 
+# macOS AppleDouble resource-fork sidecar files (created copying to/from
+# non-APFS/HFS+ volumes, e.g. exFAT external drives)
+._*
+
 # vim
 *.swp
 *.swo
