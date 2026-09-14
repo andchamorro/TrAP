@@ -10,14 +10,10 @@ PYTHON_INTERPRETER = python
 # COMMANDS                                                                      #
 #################################################################################
 
-
 ## Install Python Dependencies
 .PHONY: requirements
 requirements:
 	conda env update --name $(PROJECT_NAME) --file environment.yml --prune
-	
-
-
 
 ## Delete all compiled Python files
 .PHONY: clean
@@ -37,29 +33,20 @@ lint:
 format:
 	black --config pyproject.toml trap
 
-
-
-
 ## Set up python interpreter environment
 .PHONY: create_environment
 create_environment:
 	conda env create --name $(PROJECT_NAME) -f environment.yml
-	
 	@echo ">>> conda env created. Activate with:\nconda activate $(PROJECT_NAME)"
 	
-
-
-
 #################################################################################
 # PROJECT RULES                                                                 #
 #################################################################################
-
 
 ## Make Dataset
 .PHONY: data
 data: requirements
 	$(PYTHON_INTERPRETER) trap/dataset.py
-
 
 #################################################################################
 # Self Documenting Commands                                                     #

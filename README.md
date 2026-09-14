@@ -367,4 +367,4 @@ with `pathlib.Path` parameters.
 ## Citation
 
 If you use TrAP, please cite the manuscript *A Transformers Analysis Pipeline to Evaluate
-Genome LINE-1 Sequence Content* (Chamorro-Parejo et al.). See [`manuscript/`](manuscript).
+Genome LINE-1 Sequence Content* (Chamorro-Parejo and Ramos).
