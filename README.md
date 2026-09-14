@@ -3,6 +3,7 @@
 [![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![License: BSD](https://img.shields.io/badge/license-BSD-green.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22757449.svg)](https://doi.org/10.5281/zenodo.22757449)
 
 **TrAP** treats DNA as language to detect and quantify **LINE-1 (L1)** retroelements in
 short- and long-read RNA-seq data. Where conventional tools (RepeatMasker, alignment)
@@ -368,3 +369,5 @@ with `pathlib.Path` parameters.
 
 If you use TrAP, please cite the manuscript *A Transformers Analysis Pipeline to Evaluate
 Genome LINE-1 Sequence Content* (Chamorro-Parejo and Ramos).
+
+The software itself is archived on Zenodo: [10.5281/zenodo.22757449](https://doi.org/10.5281/zenodo.22757449).
