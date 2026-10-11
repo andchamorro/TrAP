@@ -1,18 +1,36 @@
 # Population-Based Training (PBT) search space — classification fine-tuning.
 #
-# Reviewer #23 asked for BOTH the search space and the final config. The final
+# Reviewers have asked for BOTH the search space and the final config. The final
 # config lives in config/training/classification_final.json (PBT-derived:
-# lr=8.64491338167939e-05, weight_decay=0.17959754525911098, warmup_ratio=0.1,
-# per_device_train_batch_size=16).
+# lr=5e-05, weight_decay=0.17959754525911098, warmup_ratio=0.1,
+# per_device_train_batch_size=16, gradient_accumulation_steps=2).
+#
+# These are the values that actually trained the reported model
+# (models/albert.l1hs_l1pa2.v48.k17.salmon.seqlabel): trainer_state.json logs a
+# peak learning rate of 4.9995e-05 and num_train_epochs=12 with 9 completed under
+# early stopping, and max_steps=874212 matches 4,662,416 records at an effective
+# batch of 64 (16 x 2 accumulation x 2 GPUs). The earlier lr=8.64491338167939e-05
+# in this header did not match any config or run log and has been corrected;
+# config/training/classification_final.tuned.json (Optuna) did NOT train the
+# reported model.
+#
+# The epoch budget below reflects the search; the final run extended it to a
+# maximum of 12 under early stopping (see classification_final.json).
 #
 # RECONSTRUCTED: the original Ray Tune recipe was not version-controlled. This
 # space is reconstructed to be consistent with — and to contain — the final
-# values. Mark it as reconstructed in the response letter (plan §12.5).
+# values. It is identified as reconstructed in the response letter.
 #
-# SUPERSEDED for the re-do by config/tuning/classification_optuna.yaml (Optuna +
-# Hyperband, loaded by `trap.modeling.tune`). This file is kept only as the
-# historical record of the original Ray-Tune/PBT search space; it is not loaded
-# by code.
+# NOT loaded by code: the Ray Tune driver ran outside this repo and the space
+# here is the reconstruction described above. It is nonetheless the search of
+# record for the published model, whose hyperparameters come from
+# config/training/classification_final.json.
+#
+# config/tuning/classification_optuna.yaml is a later, independent search used
+# for exploratory re-tuning (Optuna + Hyperband, loaded by `trap.modeling.tune`).
+# It writes classification_final.tuned.json, which has NOT been used to train any
+# reported model; do not read it as superseding the configuration reported in the
+# manuscript.
 
 scheduler: PopulationBasedTraining
 metric: eval_f1
