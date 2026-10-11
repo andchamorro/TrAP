@@ -1,10 +1,16 @@
 # Optuna hyperparameter search — classification fine-tuning (L1HS/L1PA/NEGATIVE).
 #
 # Consumed by `python -m trap.modeling.tune classification` (and the
-# scripts/slurm/35_tune_classification.slurm job array). Supersedes the retired
-# Ray-Tune `config/training/pbt_search_space.yaml` for the clean k17/v48 re-do.
-# The LR ceiling and epoch range were retightened from observed collapses (see
-# learning_rate / num_train_epochs comments below) rather than mirroring it.
+# scripts/slurm/35_tune_classification.slurm job array). This is an independent
+# re-tuning track, not a replacement for the search that produced the published
+# model: the reported classifier was trained from
+# config/training/classification_final.json, derived from the Ray-Tune/PBT search
+# in config/training/pbt_search_space.yaml. The LR ceiling and epoch range here
+# were retightened from observed collapses (see learning_rate /
+# num_train_epochs comments below) rather than mirroring the PBT space.
+#
+# The winning trial is written to classification_final.tuned.json, which has NOT
+# been used to train any model whose results are reported in the manuscript.
 #
 # `finalize` merges the winning trial over `base_trainer_config` and writes
 # config/training/classification_final.tuned.json (fed to stage 40).
