@@ -5,6 +5,13 @@
 #
 # HTSEQ_GTF should annotate the L1 elements so counts join the per-element ground truth.
 #
+# NONUNIQUE defaults to `all`, which is required for repeat quantification and is the
+# setting the reported benchmark was run with: htseq-count's own default (`none`) routes
+# every multi-mapping read to __alignment_not_unique and drops it from feature counts,
+# which for a LINE-1 family discards most of the signal. The flag was lost when this
+# step was refactored out of the 4.08 notebook and is restored here so the script
+# matches the reported runs. Do not remove it.
+#
 #   HTSEQ_GTF=/path/L1.gtf bash scripts/sh/run_htseq.sh
 set -euo pipefail
 
@@ -14,6 +21,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_synthetic_paths.sh"
 OUTPUT_DIR="${OUTPUT_DIR:-$(experiment_dir "${SIM_MODEL}" "${L1_SOURCE}" "${CHR}")}"
 HTSEQ_GTF="${HTSEQ_GTF:-data/ref/l1base/hsflil1_8438.te.gtf}"
 FEATURE_TYPE="${FEATURE_TYPE:-exon}"; ID_ATTR="${ID_ATTR:-gene_id}"; STRANDED="${STRANDED:-no}"
+NONUNIQUE="${NONUNIQUE:-all}"   # retain multi-mapping reads; see the header note
 POWERS="${POWERS:-5 6 7 8 9 10 11 12 13}"
 DELPROBS="${DELPROBS:-0.000 0.025 0.050 0.075 0.100}"
 SKIP_EXISTING="${SKIP_EXISTING:-1}"
@@ -32,8 +40,9 @@ for power in ${POWERS}; do
     fi
     [[ -s "${bam}" ]] || { echo "[htseq] WARN: no BAM for ${base} (run align_star.sh) — skipping" >&2; continue; }
     mkdir -p "${out}"
-    echo "[htseq] ${base}: htseq-count"
+    echo "[htseq] ${base}: htseq-count (--nonunique ${NONUNIQUE})"
     htseq-count -f bam -r pos -s "${STRANDED}" -t "${FEATURE_TYPE}" -i "${ID_ATTR}" \
+        --nonunique "${NONUNIQUE}" \
         "${bam}" "${HTSEQ_GTF}" > "${out}/htseq_counts.csv" 2> "${out}/htseq.err" \
         || { echo "[htseq] ${base}: FAILED (see ${out}/htseq.err)" >&2; exit 1; }
     n_done=$((n_done + 1))

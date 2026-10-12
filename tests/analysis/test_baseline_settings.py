@@ -121,14 +121,35 @@ def test_multimapping_disclosure_is_present_for_every_method(settings):
         assert method.get("multimapping"), f"{method['name']} lacks a multimapping statement"
 
 
-def test_htseq_default_is_recorded_as_discarding_multimappers(settings):
-    """The concession must stay in the file, since the response depends on it."""
+def test_htseq_retains_multimappers(settings):
+    """`--nonunique all` is the reported setting and the script must pass it.
+
+    The flag was missing from this wrapper between the 4.08 refactor and
+    2026-10-12 while the reported runs used it, so the test pins the script to
+    the reported configuration rather than to htseq-count's default.
+    """
     htseq = next(m for m in settings["synthetic_benchmark"]["methods"] if m["name"] == "HTSeq")
-    assert "none" in str(htseq["key_parameters"]["nonunique"])
-    assert "NOT retained" in htseq["multimapping"]
-    # And the sensitivity run that would answer it must remain listed.
-    runs = {r["tool"]: r for r in settings["sensitivity_runs"]}
-    assert runs["HTSeq"]["change"] == "--nonunique all"
+    assert htseq["key_parameters"]["nonunique"] == "all"
+    assert "RETAINED" in htseq["multimapping"]
+    script = (PROJ_ROOT / htseq["script"]).read_text()
+    assert 'NONUNIQUE="${NONUNIQUE:-all}"' in script
+    assert "--nonunique" in script
+
+
+def test_no_multimapping_sensitivity_run_is_outstanding(settings):
+    """Every comparator already retains multi-mappers, so none is pending."""
+    for run in settings["sensitivity_runs"]:
+        assert run["change"] == "none required", f"{run['tool']} still lists a pending change"
+        assert run["status"].startswith("resolved")
+
+
+def test_every_alignment_dependent_comparator_retains_multimappers(settings):
+    """R2-6's requested condition, asserted as a property of the settings file."""
+    for method in settings["synthetic_benchmark"]["methods"]:
+        if method["name"] in {"HTSeq", "TEtranscripts", "L1EM"}:
+            assert (
+                "RETAINED" in method["multimapping"]
+            ), f"{method['name']} must retain multi-mapping reads for a LINE-1 benchmark"
 
 
 def test_tetranscripts_uses_its_own_te_recommendation(settings):
