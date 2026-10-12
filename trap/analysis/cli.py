@@ -7,6 +7,7 @@ Run as ``python -m trap.analysis``.  Commands:
 * ``ablation``      — k -> classification macro-F1 sweep
 * ``select-k``      — apply the quantitative selection criterion to existing tables
 * ``robustness``    — 5'RACE locus-set / leave-one-out / bootstrap / L1Base tables
+* ``synthetic-strata`` — stratified statistics for the synthetic insertion benchmark
 
 Every command seeds all RNGs (:func:`trap.utils.seeding.set_global_seed`) and
 writes a ``manifest.json`` (git commit, seed, input SHA-256, parameters) next to
@@ -41,6 +42,10 @@ from trap.analysis.robustness import (
     robustness as run_robustness,
 )
 from trap.analysis.selection import compute_selection
+from trap.analysis.synthetic_strata import (
+    REFERENCE_METHOD,
+    synthetic_strata as run_synthetic_strata,
+)
 from trap.config import manifest
 from trap.config.schemas import KmerSpectrumConfigSchema, load_config
 from trap.config.verbosity import set_verbosity
@@ -269,6 +274,41 @@ def robustness(
             "n_boot": n_boot,
             "min_element_bp": min_element_bp,
         },
+        inputs=inputs,
+        outputs=[f"{stem}.csv" for stem in tables],
+    )
+
+
+@app.command(name="synthetic-strata")
+def synthetic_strata_cmd(
+    synthetic: Path = typer.Option(
+        Path("results/synthetic/chr1"),
+        help="Directory holding by_insertion_rate.csv and by_del_probability.csv",
+    ),
+    reference: str = typer.Option(REFERENCE_METHOD, help="Method used as the contrast reference"),
+    n_boot: int = typer.Option(5000, help="Bootstrap resamples for the mean-dR2 CI"),
+    seed: int = typer.Option(3469),
+    out: Path = typer.Option(Path("results/synthetic/chr1")),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Stratified statistics for Figure 10 (dispersion, Wilcoxon, insertion load)."""
+    set_verbosity(verbosity)
+    set_global_seed(seed)
+    logger.log("STAGE", f"[synthetic-strata] {synthetic} -> {out}")
+    tables = run_synthetic_strata(synthetic, reference=reference, n_boot=n_boot, seed=seed)
+    for stem, frame in tables.items():
+        # Row order follows the stored tables, so no sort key is needed.
+        _write_table(frame.to_dict("records"), out, stem, [])
+    inputs = {
+        name: {"path": str(synthetic / name), "sha256": manifest.sha256_file(synthetic / name)}
+        for name in ("by_insertion_rate.csv", "by_del_probability.csv")
+    }
+    manifest.write(
+        out,
+        filename="manifest.synthetic_strata.json",
+        command="synthetic-strata",
+        seed=seed,
+        params={"reference": reference, "n_boot": n_boot},
         inputs=inputs,
         outputs=[f"{stem}.csv" for stem in tables],
     )
