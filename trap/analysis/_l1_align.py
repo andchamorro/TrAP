@@ -36,12 +36,43 @@ L1_3_REGIONS: Tuple[Tuple[str, int, int], ...] = (
 )
 
 
+#: Features that are **not** part of the primary partition above, because they
+#: are nested inside one of its regions and would otherwise double-count.
+#:
+#: ``ORF0`` is the primate-specific open reading frame on the **antisense**
+#: strand of the 5'UTR (Denli et al. 2015).  Its interval here is not quoted
+#: from the literature but derived from the consensus itself: translating the
+#: reverse complement of L19088.1 positions 1-909 in all three frames yields
+#: exactly one 71-codon ORF, matching ORF0's published length, at sense
+#: coordinates 235-450 (216 bp = 71 codons + stop).  Re-deriving it is a
+#: two-line check against ``data/external/L19088.1.fa``.
+#:
+#: (name, start, end, strand) 1-based inclusive, on L1.3 / L19088.1.
+L1_3_SUBREGIONS: Tuple[Tuple[str, int, int, str], ...] = (("ORF0", 235, 450, "antisense"),)
+
+
 def l1_region(position: float) -> str:
     """Functional L1.3 region containing ``position`` (1-based)."""
     for name, lo, hi in L1_3_REGIONS:
         if lo <= position <= hi:
             return name
     return "outside"
+
+
+def l1_subregions(position: float) -> Tuple[str, ...]:
+    """Nested features containing ``position``; empty when there are none.
+
+    Separate from :func:`l1_region` because these overlap the primary
+    partition: a position inside ORF0 is *also* inside the 5'UTR, and both
+    facts are wanted.
+
+    Args:
+        position: 1-based L1.3 coordinate.
+
+    Returns:
+        Names of the nested features containing *position*.
+    """
+    return tuple(name for name, lo, hi, _ in L1_3_SUBREGIONS if lo <= position <= hi)
 
 
 @dataclass
