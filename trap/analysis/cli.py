@@ -9,6 +9,7 @@ Run as ``python -m trap.analysis``.  Commands:
 * ``robustness``    — 5'RACE locus-set / leave-one-out / bootstrap / L1Base tables
 * ``synthetic-strata`` — stratified statistics for the synthetic insertion benchmark
 * ``enrichment``    — domain + ORF0 enrichment of top-attribution k-mers
+* ``negative-control`` — is the NEGATIVE class a clean control? (Figure 13)
 
 Every command seeds all RNGs (:func:`trap.utils.seeding.set_global_seed`) and
 writes a ``manifest.json`` (git commit, seed, input SHA-256, parameters) next to
@@ -33,6 +34,7 @@ from trap.analysis.enrichment import (
     enrichment as run_enrichment,
     verify_against_published,
 )
+from trap.analysis.negative_control import negative_control as run_negative_control
 from trap.analysis.kmer_counting import (
     _jellyfish_available,
     _seqkit_available,
@@ -321,6 +323,51 @@ def enrichment(
                 "sha256": manifest.sha256_file(attribution),
             }
         },
+        outputs=[f"{stem}.csv" for stem in tables],
+    )
+
+
+@app.command(name="negative-control")
+def negative_control_cmd(
+    by_chrom: Path = typer.Option(
+        Path("results/srr4099955/aggregate_by_chr.csv"),
+        help="Per-chromosome class aggregation",
+    ),
+    confusion: Optional[Path] = typer.Option(
+        Path("results/subfamily_confusion.salmon.csv"),
+        help="Subfamily confusion table, for the leakage mechanism",
+    ),
+    annotation: Optional[Path] = typer.Option(
+        Path(".trap/L1EM/annotation/L1EM.400.bed"),
+        help="LINE-1 annotation BED, for the annotation-density adjustment",
+    ),
+    out: Path = typer.Option(Path("results/srr4099955")),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Test whether the NEGATIVE class is a clean control (R2-9, Figure 13)."""
+    set_verbosity(verbosity)
+    logger.log("STAGE", f"[negative-control] {by_chrom} -> {out}")
+    cm = confusion if confusion and confusion.exists() else None
+    if confusion and cm is None:
+        logger.warning(f"confusion table missing at {confusion}; leakage table skipped")
+    ann = annotation if annotation and annotation.exists() else None
+    if annotation and ann is None:
+        logger.warning(f"annotation BED missing at {annotation}; density adjustment skipped")
+    tables = run_negative_control(by_chrom, confusion_path=cm, annotation_path=ann)
+    for stem, frame in tables.items():
+        _write_table(frame.to_dict("records"), out, stem, [])
+    inputs = {"by_chrom": {"path": str(by_chrom), "sha256": manifest.sha256_file(by_chrom)}}
+    if cm is not None:
+        inputs["confusion"] = {"path": str(cm), "sha256": manifest.sha256_file(cm)}
+    if ann is not None:
+        inputs["annotation"] = {"path": str(ann), "sha256": manifest.sha256_file(ann)}
+    manifest.write(
+        out,
+        filename="manifest.negative_control.json",
+        command="negative-control",
+        seed=3469,
+        params={"figure": "SRR4099955_agreggate_mlvs_bwa_by_chr"},
+        inputs=inputs,
         outputs=[f"{stem}.csv" for stem in tables],
     )
 
