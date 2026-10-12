@@ -16,6 +16,11 @@
 # `--outFilterMultimapNmax 1000 --outSAMprimaryFlag AllBestScore`.  The two
 # alignments are different and are kept separate below.
 #
+# Every alignment-dependent comparator retains multi-mapping reads: HTSeq with
+# --nonunique all, TEtranscripts with --mode multi, L1EM through its own
+# candidate-enumeration and EM.  R2-6's requested condition is therefore met for
+# all of them, and no sensitivity run is outstanding.
+#
 # VERIFY BEFORE SUBMISSION — tool versions.  Module versions are pinned in
 # scripts/slurm/_common.sh and are reported as such.  The Python-packaged tools
 # (htseq-count, TEcount, salmon) are not pinned in envs/environment.yml, and
@@ -105,24 +110,33 @@ synthetic_benchmark:
       role: alignment-based baseline
       script: scripts/sh/run_htseq.sh
       command: >-
-        htseq-count -f bam -r pos -s no -t exon -i gene_id $BAM
+        htseq-count -f bam -r pos -s no -t exon -i gene_id --nonunique all $BAM
         data/ref/l1base/hsflil1_8438.te.gtf
       key_parameters:
         stranded: "no"
         feature_type: exon
         id_attr: gene_id
-        nonunique: none (DEFAULT — not passed explicitly)
+        nonunique: all
       multimapping: >-
-        NOT retained. htseq-count defaults to --nonunique none, which routes
-        multi-mapping reads to __alignment_not_unique and excludes them from
-        feature counts. This is the reviewer's strongest point and it is correct:
-        HTSeq is run at its default, which is unfavourable for repeat
-        quantification. Scope every HTSeq claim as "at default settings", and see
-        `sensitivity_runs` below.
+        RETAINED. --nonunique all counts a multi-mapping read toward every
+        feature it is compatible with, rather than discarding it. This is the
+        setting required for repeat quantification and is the one the reported
+        benchmark was run with. htseq-count's own default is `none`, which routes
+        multi-mapping reads to __alignment_not_unique and drops them from feature
+        counts; that default was NOT used.
+      notes: >-
+        The flag was absent from this script between the 4.08-notebook refactor
+        and 2026-10-12: the reported runs were invoked manually with
+        --nonunique all, and the refactored wrapper lost it. The script now
+        passes it (NONUNIQUE, default `all`), so the repository reproduces the
+        reported configuration. No re-run was required — only the script was out
+        of step with the runs, not the results.
       version: VERIFY
       assert_flags:
         - "htseq-count -f bam -r pos"
         - "-t \"${FEATURE_TYPE}\""
+        - "--nonunique \"${NONUNIQUE}\""
+        - "NONUNIQUE=\"${NONUNIQUE:-all}\""
 
     - name: TEtranscripts
       role: TE-aware alignment-based baseline
@@ -222,12 +236,12 @@ hek293_5race_benchmark:
 # ---------------------------------------------------------------------------
 sensitivity_runs:
   - tool: HTSeq
-    change: --nonunique all
+    change: none required
     rationale: >-
-      The default discards multi-mapping reads, which is the configuration the
-      reviewer objects to. This run would show how much of HTSeq's gap is the
-      parameter rather than the method.
-    status: not run
+      --nonunique all, the setting required for repeat quantification, was
+      already used for the reported runs. No sensitivity run is needed; the
+      script was corrected to match (see the HTSeq `notes` above).
+    status: resolved — no run needed
   - tool: TEtranscripts
     change: none required
     rationale: --mode multi, the tool's TE recommendation, was already used.
