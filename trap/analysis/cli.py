@@ -341,6 +341,10 @@ def negative_control_cmd(
         Path(".trap/L1EM/annotation/L1EM.400.bed"),
         help="LINE-1 annotation BED, for the annotation-density adjustment",
     ),
+    logits: Optional[Path] = typer.Option(
+        Path("results/eval_logits.salmon.npz"),
+        help="Held-out evaluation logits, for the deployment-prior leak rates",
+    ),
     out: Path = typer.Option(Path("results/srr4099955")),
     verbosity: str = typer.Option("normal"),
 ) -> None:
@@ -353,7 +357,10 @@ def negative_control_cmd(
     ann = annotation if annotation and annotation.exists() else None
     if annotation and ann is None:
         logger.warning(f"annotation BED missing at {annotation}; density adjustment skipped")
-    tables = run_negative_control(by_chrom, confusion_path=cm, annotation_path=ann)
+    lg = logits if logits and logits.exists() else None
+    if logits and lg is None:
+        logger.warning(f"eval logits missing at {logits}; operating-point table skipped")
+    tables = run_negative_control(by_chrom, confusion_path=cm, annotation_path=ann, logits_path=lg)
     for stem, frame in tables.items():
         _write_table(frame.to_dict("records"), out, stem, [])
     inputs = {"by_chrom": {"path": str(by_chrom), "sha256": manifest.sha256_file(by_chrom)}}
@@ -361,6 +368,8 @@ def negative_control_cmd(
         inputs["confusion"] = {"path": str(cm), "sha256": manifest.sha256_file(cm)}
     if ann is not None:
         inputs["annotation"] = {"path": str(ann), "sha256": manifest.sha256_file(ann)}
+    if lg is not None:
+        inputs["logits"] = {"path": str(lg), "sha256": manifest.sha256_file(lg)}
     manifest.write(
         out,
         filename="manifest.negative_control.json",
