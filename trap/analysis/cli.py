@@ -10,6 +10,7 @@ Run as ``python -m trap.analysis``.  Commands:
 * ``synthetic-strata`` — stratified statistics for the synthetic insertion benchmark
 * ``enrichment``    — domain + ORF0 enrichment of top-attribution k-mers
 * ``negative-control`` — is the NEGATIVE class a clean control? (Figure 13)
+* ``imbalance``     — class weights, imbalance ratios, L1HS deficit propagation
 
 Every command seeds all RNGs (:func:`trap.utils.seeding.set_global_seed`) and
 writes a ``manifest.json`` (git commit, seed, input SHA-256, parameters) next to
@@ -34,6 +35,7 @@ from trap.analysis.enrichment import (
     enrichment as run_enrichment,
     verify_against_published,
 )
+from trap.analysis.imbalance import imbalance as run_imbalance
 from trap.analysis.negative_control import negative_control as run_negative_control
 from trap.analysis.kmer_counting import (
     _jellyfish_available,
@@ -322,6 +324,48 @@ def enrichment(
                 "path": str(attribution),
                 "sha256": manifest.sha256_file(attribution),
             }
+        },
+        outputs=[f"{stem}.csv" for stem in tables],
+    )
+
+
+@app.command()
+def imbalance(
+    composition: Path = typer.Option(
+        Path("results/hpo_classification/dataset_composition.csv"),
+        help="Per-split class counts",
+    ),
+    metrics: Path = typer.Option(
+        Path("results/hpo_classification/per_class_metrics_table.csv"),
+        help="Per-class precision/recall table",
+    ),
+    locus_table: Path = typer.Option(
+        Path("results/srr_experiment/l1em_salmon_fpm.csv"),
+        help="Tidy 5'RACE comparison table, for the propagation sensitivity",
+    ),
+    minority: str = typer.Option("L1HS", help="Rare class"),
+    out: Path = typer.Option(Path("results/hpo_classification")),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Class imbalance: weights, ratios, and how the L1HS deficit propagates."""
+    set_verbosity(verbosity)
+    logger.log("STAGE", f"[imbalance] {composition} -> {out}")
+    tables = run_imbalance(composition, metrics, locus_table, minority=minority)
+    for stem, frame in tables.items():
+        _write_table(frame.to_dict("records"), out, stem, [])
+    manifest.write(
+        out,
+        filename="manifest.imbalance.json",
+        command="imbalance",
+        seed=3469,
+        params={"minority": minority},
+        inputs={
+            name: {"path": str(path), "sha256": manifest.sha256_file(path)}
+            for name, path in (
+                ("composition", composition),
+                ("metrics", metrics),
+                ("locus_table", locus_table),
+            )
         },
         outputs=[f"{stem}.csv" for stem in tables],
     )
