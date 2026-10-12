@@ -1,0 +1,234 @@
+# Baseline settings of record — IJMS revision, Reviewer 2 comment 6.
+#
+# "A fair comparison would require tuning each tool's multi-mapping parameters to
+# its recommended settings for LINE-1 quantification, and reporting those
+# settings."  This file is the reported settings: every flag below is the one the
+# named script actually passes, transcribed from that script rather than from
+# memory or from the manuscript.
+#
+# It is machine-checked.  `tests/analysis/test_baseline_settings.py` asserts that
+# each `assert_flags` entry still appears in the script named beside it, so if a
+# script is edited the test fails and this file — and the response letter that
+# quotes it — get re-checked.  That guard exists because transcribing these by
+# hand already produced one error: the response letter attributed the
+# training-label alignment's `--outFilterMultimapNmax 100 --winAnchorMultimapNmax
+# 100` to the TEtranscripts input, which actually received
+# `--outFilterMultimapNmax 1000 --outSAMprimaryFlag AllBestScore`.  The two
+# alignments are different and are kept separate below.
+#
+# VERIFY BEFORE SUBMISSION — tool versions.  Module versions are pinned in
+# scripts/slurm/_common.sh and are reported as such.  The Python-packaged tools
+# (htseq-count, TEcount, salmon) are not pinned in envs/environment.yml, and
+# envs/environment-dev.yml carries `salmon=2.1.2`, which does not correspond to
+# any released Salmon version (Salmon is at 1.x) — do not quote it.  Capture the
+# real versions from the run logs on Grace (`salmon --version`, `htseq-count
+# --version`, `TEcount --version`) and fill `version:` below before submission.
+
+modules:
+  source: scripts/slurm/_common.sh
+  bio_modules: GCCcore/13.3.0 GCC/13.3.0 STAR/2.7.11b SAMtools/1.21 BEDTools/2.31.1
+  star: "2.7.11b"
+  samtools: "1.21"
+  bedtools: "2.31.1"
+
+# ---------------------------------------------------------------------------
+# Alignment used to LABEL the training reads.  Not a benchmark baseline: this
+# produces the read labels, and no comparator is scored on it.  Reported because
+# the manuscript Methods quote it and because it is the source of the 100/100
+# figures that must not be confused with the benchmark alignment.
+# ---------------------------------------------------------------------------
+training_label_alignment:
+  tool: STAR
+  role: assign L1HS / L1PA / NEGATIVE labels by RepeatMasker overlap
+  scripts:
+    - scripts/build_dataset.sh
+    - scripts/build_dataset_seqlabel.sh
+    - scripts/generate_dataset.sh
+  key_parameters:
+    outFilterMultimapNmax: 100
+    winAnchorMultimapNmax: 100
+  multimapping: permissive — up to 100 reported loci and 100 seed-anchor loci retained
+  rationale: retain highly repetitive LINE-1 reads for annotation-based labelling
+  assert_flags:
+    - "--outFilterMultimapNmax 100"
+    - "--winAnchorMultimapNmax 100"
+
+# ---------------------------------------------------------------------------
+# Figure 10 — synthetic insertion benchmark.  Every alignment-dependent method
+# below consumes the SAME BAM, produced by scripts/sh/align_star.sh, so no
+# comparator is advantaged by a different alignment.
+# ---------------------------------------------------------------------------
+synthetic_benchmark:
+  shared_alignment:
+    tool: STAR
+    script: scripts/sh/align_star.sh
+    index_command: >-
+      STAR --runMode genomeGenerate --genomeDir $STAR_INDEX
+      --genomeFastaFiles $GENOME_FA --sjdbGTFfile $GTF
+      --sjdbOverhang $((ART_LEN - 1)) --runThreadN $THREADS
+    align_command: >-
+      STAR --genomeDir $STAR_INDEX --readFilesIn $R1 $R2
+      --outSAMtype BAM SortedByCoordinate --outFileNamePrefix $OUT/
+      --outTmpDir $STAR_TMP --outSAMprimaryFlag AllBestScore
+      --outFilterMultimapNmax 1000 --runThreadN $THREADS
+    key_parameters:
+      outFilterMultimapNmax: 1000
+      outSAMprimaryFlag: AllBestScore
+    multimapping: >-
+      up to 1000 reported loci; all best-scoring alignments flagged primary, so
+      multi-mapping LINE-1 reads are retained in the BAM for every downstream tool
+    assert_flags:
+      - "--outFilterMultimapNmax 1000"
+      - "--outSAMprimaryFlag AllBestScore"
+
+  methods:
+    - name: Salmon
+      role: alignment-free baseline
+      script: scripts/sh/run_salmon.sh
+      index_command: salmon index -t $L1_FASTA -i $L1_INDEX -k 31
+      index_script: scripts/sh/generate_synthetic_dataset.sh
+      quant_command: salmon quant -q -i $L1_INDEX -l A -1 $R1 -2 $R2 --sketch
+      key_parameters:
+        kmerLen: 31
+        libType: A
+        mode: --sketch
+      multimapping: >-
+        handled internally by Salmon's EM over equivalence classes; no
+        multi-mapping flag to set
+      version: VERIFY
+      assert_flags:
+        - "salmon quant"
+        - "-l A"
+        - "--sketch"
+
+    - name: HTSeq
+      role: alignment-based baseline
+      script: scripts/sh/run_htseq.sh
+      command: >-
+        htseq-count -f bam -r pos -s no -t exon -i gene_id $BAM
+        data/ref/l1base/hsflil1_8438.te.gtf
+      key_parameters:
+        stranded: "no"
+        feature_type: exon
+        id_attr: gene_id
+        nonunique: none (DEFAULT — not passed explicitly)
+      multimapping: >-
+        NOT retained. htseq-count defaults to --nonunique none, which routes
+        multi-mapping reads to __alignment_not_unique and excludes them from
+        feature counts. This is the reviewer's strongest point and it is correct:
+        HTSeq is run at its default, which is unfavourable for repeat
+        quantification. Scope every HTSeq claim as "at default settings", and see
+        `sensitivity_runs` below.
+      version: VERIFY
+      assert_flags:
+        - "htseq-count -f bam -r pos"
+        - "-t \"${FEATURE_TYPE}\""
+
+    - name: TEtranscripts
+      role: TE-aware alignment-based baseline
+      script: scripts/sh/run_tetranscripts.sh
+      command: >-
+        TEcount --sortByPos -b $BAM --GTF data/external/gencode.v48.annotation.gtf
+        --TE data/ref/l1base/hsflil1_8438.te.gtf --mode multi
+        --project $PROJECT --outdir $OUT
+      key_parameters:
+        mode: multi
+      multimapping: >-
+        RETAINED. --mode multi is TEtranscripts' own recommendation for
+        transposable elements and distributes multi-mapping reads across TE
+        annotations by EM. No change needed for this tool.
+      version: VERIFY
+      assert_flags:
+        - "TEcount --sortByPos"
+        - "--mode \"${TE_MODE}\""
+        - "TE_MODE=\"${TE_MODE:-multi}\""
+
+    - name: L1EM
+      role: LINE-1-specialised baseline, run unmodified upstream
+      script: scripts/sh/run_l1em.sh
+      command: bash $L1EM_PATH/run_L1EM.sh $BAM $L1EM_PATH $GENOME_FA $L1EM_BED $OUTDIR
+      annotation: data/ref/l1base/hsflil1_8438.l1em.bed
+      parameters_file: .trap/L1EM/parameters.sh
+      key_parameters:
+        threads: 16
+        realignNM: 3
+        L1EM_NM: 3
+        NMdiff: 2
+        bwa_i: 20
+        error_prob: 0.01
+        max_start2start_len: 500
+        reads_per_pickle: 10000
+        EM_threshold: 1.0e-7
+        template_fraction: 1
+        flanking_bp: 400
+      multimapping: >-
+        RETAINED. L1EM enumerates candidate alignments itself (bwa realignment at
+        realignNM 3, NMdiff 2) and resolves them by EM; the upstream defaults are
+        used unchanged, so this is the tool's own recommended configuration.
+      notes: >-
+        The 400 bp flanking extension is L1EM's own
+        (utilities/read_or_pair_overlap_bed.py sets flanking = 400, reflected in
+        annotation/L1EM.400.bed) and is the LINE-1-recommended setting the
+        manuscript already reports.
+      version: upstream L1EM repository, vendored unmodified — VERIFY commit
+
+    - name: AlbertEM
+      role: TrAP configuration — classifier filter then L1EM
+      script: scripts/sh/run_albertem.sh
+      multimapping: as L1EM, applied to the classifier-retained read subset
+      notes: identical L1EM settings; differs only in the input read set
+
+    - name: AlbertSalmon
+      role: TrAP configuration — classifier filter then Salmon
+      multimapping: as Salmon, applied to the classifier-retained read subset
+      notes: identical Salmon settings; differs only in the input read set
+
+# ---------------------------------------------------------------------------
+# Figure 11 — HEK293 5'RACE concordance (SRR3997504 short reads).
+# ---------------------------------------------------------------------------
+hek293_5race_benchmark:
+  salmon_family:
+    script: scripts/salmon_pipeline.sh
+    index_command: salmon index -t $FASTA -i $INDEX --threads $THREADS --kmerLen 31
+    quant_command: >-
+      salmon quant -q -i $INDEX -l ISR -1 $R1 -2 $R2 --validateMappings
+      -o $OUTDIR --threads $THREADS
+    key_parameters:
+      kmerLen: 31
+      libType: ISR
+      validateMappings: true
+    classifier_filter: >-
+      AlbertSalmon quantifies only the reads retained by
+      `python -m trap.modeling.postprocessing filter-ids` (keeps P(NEGATIVE) <
+      threshold, default 0.5), extracted with `seqkit grep`; Salmon quantifies the
+      unfiltered reads. Both use the identical index and quant command, so the
+      contrast isolates the classifier.
+    assert_flags:
+      - "-l ISR"
+      - "--validateMappings"
+      - "--kmerLen 31"
+  reference_side:
+    tool: BWA-MEM + featureCounts
+    scripts:
+      - scripts/5race_read_count.sh
+      - scripts/sh/bwamemAndCount.sh
+    annotation: L1EM.400.saf
+    notes: >-
+      Produces the 5'RACE reference signal (race5), not a comparator estimate.
+
+# ---------------------------------------------------------------------------
+# Bounded sensitivity runs that would answer R2-6's strongest version.  Not run:
+# they require Grace and the response does not depend on them (plan section 3.4).
+# ---------------------------------------------------------------------------
+sensitivity_runs:
+  - tool: HTSeq
+    change: --nonunique all
+    rationale: >-
+      The default discards multi-mapping reads, which is the configuration the
+      reviewer objects to. This run would show how much of HTSeq's gap is the
+      parameter rather than the method.
+    status: not run
+  - tool: TEtranscripts
+    change: none required
+    rationale: --mode multi, the tool's TE recommendation, was already used.
+    status: resolved — no run needed
