@@ -6,6 +6,7 @@ Run as ``python -m trap.analysis``.  Commands:
 * ``kmer-spectrum`` — entropy/redundancy spectrum for one corpus
 * ``ablation``      — k -> classification macro-F1 sweep
 * ``select-k``      — apply the quantitative selection criterion to existing tables
+* ``robustness``    — 5'RACE locus-set / leave-one-out / bootstrap robustness tables
 
 Every command seeds all RNGs (:func:`trap.utils.seeding.set_global_seed`) and
 writes a ``manifest.json`` (git commit, seed, input SHA-256, parameters) next to
@@ -31,6 +32,11 @@ from trap.analysis.kmer_counting import (
     _seqkit_available,
     kmer_spectrum as run_kmer_spectrum,
     load_corpus,
+)
+from trap.analysis.robustness import (
+    DEFAULT_N_BOOT,
+    PRIMARY_LOCUS_SET,
+    robustness as run_robustness,
 )
 from trap.analysis.selection import compute_selection
 from trap.config import manifest
@@ -199,6 +205,51 @@ def _load_spectrum(path: Path) -> pd.DataFrame:
             raise typer.BadParameter(f"no *.spectrum.csv files in {path}")
         return pd.concat(frames, ignore_index=True)
     return pd.read_csv(path)
+
+
+@app.command()
+def robustness(
+    table: Path = typer.Option(
+        Path("results/srr_experiment/l1em_salmon_fpm.csv"),
+        help="Tidy 5'RACE comparison table (locus x method)",
+    ),
+    l1base_bed: Optional[Path] = typer.Option(
+        Path("data/ref/l1base/hsflil1_8438.bed"),
+        "--l1base-bed",
+        help="L1Base2 FLI-L1 BED for the orthogonal-annotation counts",
+    ),
+    locus_set: str = typer.Option(
+        PRIMARY_LOCUS_SET, help="Primary locus set for leave-one-out and the bootstrap"
+    ),
+    n_boot: int = typer.Option(DEFAULT_N_BOOT, help="Bootstrap resamples for the dR2 CIs"),
+    seed: int = typer.Option(3469),
+    out: Path = typer.Option(Path("results/srr_experiment"), help="Output directory"),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Robustness of the 5'RACE concordance benchmark (locus sets, leverage, dR2 CIs)."""
+    set_verbosity(verbosity)
+    set_global_seed(seed)
+    logger.log("STAGE", f"[robustness] {table} -> {out} (primary set {locus_set})")
+    bed = l1base_bed if l1base_bed and l1base_bed.exists() else None
+    if l1base_bed and bed is None:
+        logger.warning(f"L1Base BED missing at {l1base_bed}; overlap counts skipped")
+    tables = run_robustness(table, bed_path=bed, locus_set=locus_set, n_boot=n_boot, seed=seed)
+    for stem, frame in tables.items():
+        # Row order is fixed by construction (definition x method), so no sort
+        # key is needed for byte-stable output.
+        _write_table(frame.to_dict("records"), out, stem, [])
+    inputs = {"table": {"path": str(table), "sha256": manifest.sha256_file(table)}}
+    if bed is not None:
+        inputs["l1base_bed"] = {"path": str(bed), "sha256": manifest.sha256_file(bed)}
+    manifest.write(
+        out,
+        filename="manifest.robustness.json",
+        command="robustness",
+        seed=seed,
+        params={"locus_set": locus_set, "n_boot": n_boot},
+        inputs=inputs,
+        outputs=[f"{stem}.csv" for stem in tables],
+    )
 
 
 @app.command()
