@@ -320,12 +320,69 @@ def leakage_rates(confusion_path: Path) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("group").reset_index(drop=True)
 
 
+def operating_point_leakage(logits_path: Path, negative_threshold: float = 0.5) -> pd.DataFrame:
+    """Leak-to-NEGATIVE rates at the deployment prior, by both decision rules.
+
+    :func:`leakage_rates` reads a *balanced* per-subfamily sample, which gives
+    the spread across subfamilies but not the rate the pipeline actually runs
+    at.  This reads the held-out evaluation logits, whose class mix is the
+    deployment prior, and reports the rate under both rules that matter:
+
+    * ``argmax`` — what Figure 13 plots, since the per-chromosome aggregation
+      assigns each read to its highest-scoring class;
+    * ``threshold`` — what the quantification filter applies, keeping reads with
+      ``P(NEGATIVE) < negative_threshold`` (``trap.modeling.postprocessing``).
+
+    The two are reported side by side because they are different operating
+    points and should not be conflated, even when they agree numerically.
+
+    Args:
+        logits_path: ``.npz`` with ``logits``, ``labels``, ``classes``.
+        negative_threshold: Discard threshold used by the filter.
+
+    Returns:
+        One row per true class.
+    """
+    from scipy.special import softmax
+
+    data = np.load(logits_path, allow_pickle=True)
+    logits = data["logits"]
+    labels = data["labels"]
+    classes = [str(c) for c in data["classes"]]
+    if "NEGATIVE" not in classes:
+        raise ValueError(f"no NEGATIVE class in {logits_path}: {classes}")
+    probabilities = softmax(logits, axis=1)
+    negative = classes.index("NEGATIVE")
+    predicted = probabilities.argmax(axis=1)
+
+    rows = []
+    for index, name in enumerate(classes):
+        mask = labels == index
+        if not mask.any():
+            continue
+        rows.append(
+            {
+                "true_class": name,
+                "n_reads": int(mask.sum()),
+                "prior": float(mask.mean()),
+                "leak_argmax": float((predicted[mask] == negative).mean()),
+                "leak_threshold": float(
+                    (probabilities[mask, negative] >= negative_threshold).mean()
+                ),
+                "mean_p_negative": float(probabilities[mask, negative].mean()),
+                "negative_threshold": negative_threshold,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 #: Output stem -> builder.
 OUTPUT_TABLES: Tuple[str, ...] = (
     "negative_control_correlations",
     "negative_control_jackknife",
     "negative_control_composition",
     "negative_control_leakage",
+    "negative_control_operating_point",
 )
 
 
@@ -333,6 +390,7 @@ def negative_control(
     by_chrom_path: Path,
     confusion_path: Path | None = None,
     annotation_path: Path | None = None,
+    logits_path: Path | None = None,
     figure: str = MLVS_BWA_FIGURE,
 ) -> Dict[str, pd.DataFrame]:
     """Compute every NEGATIVE-class diagnostic table.
@@ -343,6 +401,8 @@ def negative_control(
             when ``None``.
         annotation_path: LINE-1 annotation BED; the annotation-density
             adjustment is omitted when ``None``.
+        logits_path: Held-out evaluation logits; the operating-point table is
+            skipped when ``None``.
         figure: Figure key within the aggregation.
 
     Returns:
@@ -360,6 +420,14 @@ def negative_control(
         tables["negative_control_leakage"] = leakage_rates(confusion_path)
     else:
         logger.warning("no confusion table given; skipping the leakage mechanism")
+    if logits_path is not None:
+        leakage = operating_point_leakage(logits_path)
+        tables["negative_control_operating_point"] = leakage
+        for _, row in leakage.iterrows():
+            logger.info(
+                f"  {row['true_class']}: {100 * row['leak_argmax']:.1f}% assigned NEGATIVE "
+                f"by argmax, {100 * row['leak_threshold']:.1f}% at the filter threshold"
+            )
 
     focus = correlations[
         (correlations["classifier_class"] == "NEGATIVE")

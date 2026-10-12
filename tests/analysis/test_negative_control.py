@@ -22,6 +22,7 @@ from trap.analysis.negative_control import (
     load_annotation_density,
     load_by_chromosome,
     negative_control,
+    operating_point_leakage,
 )
 
 pytestmark = pytest.mark.unit
@@ -245,6 +246,49 @@ def test_leakage_rates_are_read_weighted(tmp_path):
     assert table.loc["L1PA", "leak_to_negative_weighted_mean"] == pytest.approx(expected)
     assert table.loc["L1PA", "leak_to_negative_max"] == pytest.approx(0.478)
     assert table.loc["NEGATIVE", "leak_to_negative_weighted_mean"] > 0.9
+
+
+# ── Operating point ───────────────────────────────────────────────────────────
+
+
+def test_operating_point_leakage_reports_both_decision_rules(tmp_path):
+    """argmax and the filter threshold are different rules and both are shown."""
+    # Three reads per class with hand-set logits: for the L1PA rows, P(NEGATIVE)
+    # is the largest of the three but still below 0.5, so argmax calls NEGATIVE
+    # while the 0.5 filter keeps the read.
+    logits = np.array(
+        [
+            [5.0, 0.0, 0.0],  # L1HS, confidently correct
+            [0.0, 0.0, 5.0],  # L1HS, confidently leaked
+            [0.0, 1.0, 1.2],  # L1PA, argmax NEGATIVE but P < 0.5
+            [0.0, 1.0, 1.2],  # L1PA, same
+            [0.0, 0.0, 9.0],  # NEGATIVE, correct
+        ],
+        dtype=np.float32,
+    )
+    labels = np.array([0, 0, 1, 1, 2])
+    path = tmp_path / "logits.npz"
+    np.savez(path, logits=logits, labels=labels, classes=np.array(["L1HS", "L1PA", "NEGATIVE"]))
+    table = operating_point_leakage(path).set_index("true_class")
+    assert table.loc["L1HS", "leak_argmax"] == pytest.approx(0.5)
+    assert table.loc["L1HS", "leak_threshold"] == pytest.approx(0.5)
+    # The rules disagree for L1PA: argmax leaks both reads, the threshold none.
+    assert table.loc["L1PA", "leak_argmax"] == pytest.approx(1.0)
+    assert table.loc["L1PA", "leak_threshold"] == pytest.approx(0.0)
+    assert table.loc["NEGATIVE", "leak_argmax"] == pytest.approx(1.0)
+    assert table["prior"].sum() == pytest.approx(1.0)
+
+
+def test_operating_point_leakage_requires_a_negative_class(tmp_path):
+    path = tmp_path / "bad.npz"
+    np.savez(
+        path,
+        logits=np.zeros((2, 2), dtype=np.float32),
+        labels=np.array([0, 1]),
+        classes=np.array(["L1HS", "L1PA"]),
+    )
+    with pytest.raises(ValueError, match="no NEGATIVE class"):
+        operating_point_leakage(path)
 
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
