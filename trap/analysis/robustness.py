@@ -25,11 +25,19 @@ drift apart:
    confidence intervals on ΔR² between methods, resampling loci (not residuals)
    so both fits see the same resample.
 
-Two descriptive tables support the orthogonal-annotation question:
-:func:`l1base_overlap_counts` (how many comparison loci overlap an L1Base2
-full-length intact L1, an annotation source independent of RepeatMasker) and
-:func:`dynamic_range_summary` (per-method locus coverage and value range, which
-is what makes the pooled-unit caveat concrete).
+The orthogonal-annotation question (R2-1) is answered with three L1Base2
+tracks rather than one: :data:`L1BASE_TRACKS` registers the ORF-intact sets
+(FLI, ORF2 — membership decided by sequence-level ORF criteria, so genuinely
+independent of the repeat annotation) and the much larger full-length set
+(FLnI, >4500 nt over RepeatMasker-derived intervals, so *not* independent but
+large enough to fit).  :func:`l1base_overlap_counts` reports coverage per
+track and :func:`l1base_restricted_fits` refits the benchmark inside each
+restriction, carrying :func:`leverage_share` so a restriction that is really
+one locus cannot be mistaken for a result.  Restricting to element bodies
+longer than :data:`MIN_ELEMENT_BP` is the biologically matched choice, since a
+5'-truncated element cannot initiate its own transcription.
+:func:`dynamic_range_summary` reports per-method locus coverage and value
+range, which is what makes the pooled-unit caveat concrete.
 
 The primary analysis for the revision is :data:`PRIMARY_LOCUS_SET` — the common
 locus set intersected with reference-detected loci (``race5 > 0``) — a matched
@@ -41,7 +49,7 @@ unchanged; this is added material, not a replacement.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Dict, Iterable, Mapping, Sequence, Tuple
+from typing import Callable, Dict, Iterable, Mapping, NamedTuple, Sequence, Set, Tuple
 
 from loguru import logger
 import numpy as np
@@ -90,6 +98,105 @@ DEFAULT_CONTRASTS: Tuple[Tuple[str, str], ...] = (
     ("AlbertSalmon", "L1EM"),
     ("AlbertEM", "AlbertSalmon"),
 )
+
+
+class L1BaseTrack(NamedTuple):
+    """One L1Base2 annotation track.
+
+    Attributes:
+        name: Short label used in output tables.
+        filename: BED file name under the L1Base reference directory.
+        flank_bp: **Total** flank (both sides combined) that L1Base adds around
+            the element body in the deposited interval.  Derived empirically,
+            not assumed: aligning each track against the unpadded L1 bodies in
+            the benchmark annotation gives a median flank of 1006/1004 bp per
+            side for FLI and ORF2 (so 2000 total), and a median left+right sum
+            of 3999 bp for FLnI.  The FLnI value is corroborated by the track's
+            own definition — its minimum span of 8500 bp minus 4000 reproduces
+            L1Base's published ">4500 nt" cutoff exactly.
+        orthogonal: Whether membership is decided by sequence-level criteria
+            that are independent of the repeat annotation.  See
+            :data:`L1BASE_TRACKS` for why this is not uniform across tracks.
+        description: Human-readable definition.
+    """
+
+    name: str
+    filename: str
+    flank_bp: int
+    orthogonal: bool
+    description: str
+
+
+#: L1Base2 (Ens84.38) tracks, in decreasing order of annotation independence.
+#:
+#: Only FLI and ORF2 are orthogonal in the sense R2-1 means: membership turns
+#: on ORF intactness — conserved ORF1/ORF2 reading frames, intactness score —
+#: which is judged from the sequence and not from a repeat annotation.  FLnI
+#: membership turns on *length* (>4500 nt) over RepeatMasker-derived intervals
+#: (hence the ``_rm`` file), so it is far larger and gives the statistical power
+#: the ORF-defined tracks lack, but it is **not** an independent annotation
+#: source.  Keep the distinction when reporting: FLnI answers "does the result
+#: survive on full-length elements?", FLI/ORF2 answer "does it survive under an
+#: annotation TrAP's labels were not derived from?".
+L1BASE_TRACKS: Tuple[L1BaseTrack, ...] = (
+    L1BaseTrack(
+        "FLI",
+        "hsflil1_8438.bed",
+        2000,
+        True,
+        "full-length intact L1 (ORF1 and ORF2 conserved); 146 elements",
+    ),
+    L1BaseTrack(
+        "ORF2",
+        "hsorf2l1_8438.bed",
+        2000,
+        True,
+        "ORF2-intact L1; 107 elements",
+    ),
+    L1BaseTrack(
+        "FLnI",
+        "hsflnil1_8438_rm.bed",
+        4000,
+        False,
+        "full-length >4500 nt L1 with disrupted ORFs, RepeatMasker-derived; 13,418 elements",
+    ),
+)
+
+#: Element-length floor, applied to the body length (span minus
+#: :attr:`L1BaseTrack.flank_bp`).  A 5'RACE benchmark measures 5'-initiated
+#: transcription, which a 5'-truncated element cannot support, so restricting to
+#: near-full-length bodies is the biologically matched choice.  6 kb is just
+#: below the ~6,030 bp median body of the annotated full-length L1s.
+MIN_ELEMENT_BP = 6000
+
+#: Name of the composite over every loaded track.
+UNION_COMPOSITE = "union"
+
+#: Name of the composite over the annotation-independent tracks only.
+ORTHOGONAL_COMPOSITE = "orf_defined"
+
+
+def composite_members(elements: pd.DataFrame) -> Dict[str, Tuple[str, ...]]:
+    """Composite restrictions, derived from the tracks actually loaded.
+
+    Membership is computed from the element table rather than from a fixed list
+    of track names, so a caller that loads a different (or partial) set of
+    tracks still gets correct composites — and, in particular, a correct
+    ``orthogonal`` flag.
+
+    Args:
+        elements: Table from :func:`load_l1base_elements`.
+
+    Returns:
+        Mapping of composite name to its member track names.  The
+        orthogonal-only composite is omitted when it would duplicate the union.
+    """
+    tracks = tuple(sorted(elements["track"].unique()))
+    orthogonal = tuple(sorted(elements.loc[elements["orthogonal"], "track"].unique()))
+    composites = {UNION_COMPOSITE: tracks}
+    if orthogonal:
+        composites[ORTHOGONAL_COMPOSITE] = orthogonal
+    return composites
 
 
 # ── Locus-set definitions ─────────────────────────────────────────────────────
@@ -409,6 +516,8 @@ def bootstrap_delta_r2(
     contrasts: Iterable[Tuple[str, str]] = DEFAULT_CONTRASTS,
     n_boot: int = DEFAULT_N_BOOT,
     seed: int = DEFAULT_SEED,
+    restrict_to: Set[str] | None = None,
+    restriction_name: str = "none",
 ) -> pd.DataFrame:
     """Paired percentile bootstrap confidence intervals on ΔR² (answers R2-3).
 
@@ -423,6 +532,9 @@ def bootstrap_delta_r2(
         contrasts: ``(method_a, method_b)`` pairs; ΔR² is ``a - b``.
         n_boot: Bootstrap resamples.
         seed: RNG seed (the project-wide 3469).
+        restrict_to: Optional further restriction to these regions, e.g. an
+            L1Base-defined subset from :func:`l1base_restrictions`.
+        restriction_name: Label for that restriction, written to the output.
 
     Returns:
         One row per contrast with the observed ΔR², the 95 % percentile
@@ -439,7 +551,11 @@ def bootstrap_delta_r2(
                 "the paired bootstrap needs a matched set"
             )
 
+    if restrict_to is not None:
+        matched = matched[matched["region"].isin(restrict_to)]
     n = len(matched)
+    if n < 3:
+        raise ValueError(f"restriction {restriction_name!r} leaves n={n} loci; too few to fit")
     rng = np.random.default_rng(seed)
     index = rng.integers(0, n, size=(n_boot, n))
     race5 = matched["race5"].to_numpy()
@@ -464,6 +580,7 @@ def bootstrap_delta_r2(
         rows.append(
             {
                 "primary_set": locus_set,
+                "restriction": restriction_name,
                 "n": n,
                 "contrast": f"{method_a}-{method_b}",
                 "delta_r2": pearson_r2(race5, y_a) - pearson_r2(race5, y_b),
@@ -477,65 +594,244 @@ def bootstrap_delta_r2(
     return pd.DataFrame(rows)
 
 
-def l1base_overlap_counts(
-    wide: pd.DataFrame,
-    bed_path: Path,
-    methods: Sequence[str] = METHODS,
+def load_l1base_elements(
+    l1base_dir: Path,
+    tracks: Sequence[L1BaseTrack] = L1BASE_TRACKS,
+    min_element_bp: int | None = MIN_ELEMENT_BP,
 ) -> pd.DataFrame:
-    """Count benchmark loci overlapping an L1Base2 full-length intact L1.
+    """Load L1Base2 BED tracks and filter them to near-full-length elements.
 
-    L1Base2 is curated independently of RepeatMasker, so this is the orthogonal
-    annotation R2-1 asks about.  It is reported **descriptively only**: an
-    L1Base-restricted regression was tested and dropped, because the restricted
-    set is dominated by a single active locus (see the returned counts) and so
-    would be *more* leverage-dependent, not less.
+    The deposited intervals include L1Base's flanks, so the body length is
+    ``span - flank_bp`` (see :class:`L1BaseTrack` for how each flank was
+    established).  ``track``/``browser`` header lines are skipped.
+
+    Args:
+        l1base_dir: Directory holding the L1Base BED files.
+        tracks: Tracks to load; missing files are skipped with a warning.
+        min_element_bp: Keep elements whose body exceeds this length.  ``None``
+            keeps every element.
+
+    Returns:
+        One row per element with ``track, chrom, start, end, uid, element_bp,
+        orthogonal``.
+    """
+    frames = []
+    for track in tracks:
+        path = Path(l1base_dir) / track.filename
+        if not path.exists():
+            logger.warning(f"L1Base track {track.name} missing at {path}; skipping")
+            continue
+        bed = pd.read_csv(
+            path,
+            sep="\t",
+            header=None,
+            usecols=[0, 1, 2, 3],
+            names=["chrom", "start", "end", "uid"],
+            dtype={0: str, 1: str, 2: str, 3: str},
+            on_bad_lines="skip",
+        )
+        # BED files from L1Base carry a `track name=...` line, which pandas
+        # would otherwise admit as a row with a junk chromosome.
+        bed = bed[bed["chrom"].str.startswith("chr", na=False)].copy()
+        bed[["start", "end"]] = bed[["start", "end"]].astype(int)
+        bed["element_bp"] = bed["end"] - bed["start"] - track.flank_bp
+        kept = bed if min_element_bp is None else bed[bed["element_bp"] > min_element_bp]
+        logger.info(
+            f"L1Base {track.name}: {len(kept)}/{len(bed)} elements with a body "
+            f"> {min_element_bp} bp ({track.description})"
+        )
+        kept = kept.assign(track=track.name, orthogonal=track.orthogonal)
+        frames.append(kept)
+    if not frames:
+        raise FileNotFoundError(f"no L1Base BED tracks found under {l1base_dir}")
+    return pd.concat(frames, ignore_index=True)
+
+
+def _overlap_mask(wide: pd.DataFrame, elements: pd.DataFrame) -> np.ndarray:
+    """Boolean mask of *wide* rows overlapping any interval in *elements*.
+
+    Overlap is half-open: intervals that merely abut do not overlap.
+    """
+    mask = np.zeros(len(wide), dtype=bool)
+    locus_chrom = wide["chrom"].to_numpy()
+    locus_start = wide["chromStart"].to_numpy()
+    locus_end = wide["chromEnd"].to_numpy()
+    for chrom, group in elements.groupby("chrom"):
+        rows = np.flatnonzero(locus_chrom == chrom)
+        if not len(rows):
+            continue
+        starts = group["start"].to_numpy()
+        ends = group["end"].to_numpy()
+        hit = (starts[None, :] < locus_end[rows][:, None]) & (
+            ends[None, :] > locus_start[rows][:, None]
+        )
+        mask[rows] = hit.any(axis=1)
+    return mask
+
+
+def annotate_l1base_overlap(wide: pd.DataFrame, elements: pd.DataFrame) -> pd.DataFrame:
+    """Add one ``l1base_<track>`` flag per track, plus the composite flags.
 
     Args:
         wide: Table from :func:`load_locus_table`.
-        bed_path: L1Base2 FLI-L1 BED (``data/ref/l1base/hsflil1_8438.bed``).
-        methods: Methods whose coverage of the overlap set is reported.
+        elements: Table from :func:`load_l1base_elements`.
 
     Returns:
-        A single-row-per-stratum table of locus counts.
+        A copy of *wide* with boolean membership columns.
     """
-    bed = pd.read_csv(
-        bed_path,
-        sep="\t",
-        header=None,
-        usecols=[0, 1, 2, 3],
-        names=["chrom", "start", "end", "uid"],
-    )
-    by_chrom = {chrom: group for chrom, group in bed.groupby("chrom")}
-
-    def _overlaps(row: pd.Series) -> bool:
-        group = by_chrom.get(row["chrom"])
-        if group is None:
-            return False
-        return bool(
-            ((group["start"] < row["chromEnd"]) & (group["end"] > row["chromStart"])).any()
+    annotated = wide.copy()
+    for track in sorted(elements["track"].unique()):
+        annotated[f"l1base_{track}"] = _overlap_mask(
+            annotated, elements[elements["track"] == track]
         )
+    for name, members in composite_members(elements).items():
+        columns = [f"l1base_{m}" for m in members]
+        annotated[f"l1base_{name}"] = annotated[columns].any(axis=1)
+    return annotated
 
-    overlap = wide.apply(_overlaps, axis=1)
+
+def l1base_restrictions(annotated: pd.DataFrame) -> Dict[str, Set[str]]:
+    """Region sets for every L1Base membership column on *annotated*."""
+    return {
+        column[len("l1base_") :]: set(annotated.loc[annotated[column], "region"])
+        for column in annotated.columns
+        if column.startswith("l1base_")
+    }
+
+
+def l1base_overlap_counts(
+    wide: pd.DataFrame,
+    elements: pd.DataFrame,
+    methods: Sequence[str] = METHODS,
+) -> pd.DataFrame:
+    """Count benchmark loci overlapping each L1Base2 track (answers R2-1).
+
+    Args:
+        wide: Table from :func:`load_locus_table`.
+        elements: Table from :func:`load_l1base_elements`.
+        methods: Methods whose coverage of each overlap set is reported.
+
+    Returns:
+        One row per restriction with locus counts by reference-activity
+        stratum, plus how many loci each method estimates.
+    """
+    annotated = annotate_l1base_overlap(wide, elements)
+    detected = annotated["race5"] > 0
+    active = annotated["race5"] > RACE5_MIN_PCT
     rows = [
-        {"stratum": "all_benchmark_loci", "n": len(wide)},
-        {"stratum": "l1base_overlap", "n": int(overlap.sum())},
-        {"stratum": "l1base_overlap_race5_gt_0", "n": int((overlap & (wide["race5"] > 0)).sum())},
         {
-            "stratum": "l1base_overlap_race5_gt_1pct",
-            "n": int((overlap & (wide["race5"] > RACE5_MIN_PCT)).sum()),
-        },
-        {
-            "stratum": "l1base_overlap_in_common_set",
-            "n": int((overlap & wide["in_common_set"]).sum()),
-        },
+            "restriction": "none",
+            "n_elements": len(elements),
+            "orthogonal": False,
+            "n_loci": len(annotated),
+            "n_race5_gt_0": int(detected.sum()),
+            "n_race5_gt_1pct": int(active.sum()),
+            "n_common_set": int(annotated["in_common_set"].sum()),
+            "n_common_and_detected": int((annotated["in_common_set"] & detected).sum()),
+            **{f"n_estimated_by_{m}": int(annotated[m].notna().sum()) for m in methods},
+        }
     ]
-    for method in methods:
+    composites = composite_members(elements)
+    for name, regions in l1base_restrictions(annotated).items():
+        subset = annotated[annotated["region"].isin(regions)]
+        members = composites.get(name, (name,))
         rows.append(
             {
-                "stratum": f"l1base_overlap_estimated_by_{method}",
-                "n": int((overlap & wide[method].notna()).sum()),
+                "restriction": name,
+                "n_elements": int(elements["track"].isin(members).sum()),
+                "orthogonal": bool(
+                    elements.loc[elements["track"].isin(members), "orthogonal"].all()
+                ),
+                "n_loci": len(subset),
+                "n_race5_gt_0": int((subset["race5"] > 0).sum()),
+                "n_race5_gt_1pct": int((subset["race5"] > RACE5_MIN_PCT).sum()),
+                "n_common_set": int(subset["in_common_set"].sum()),
+                "n_common_and_detected": int(
+                    (subset["in_common_set"] & (subset["race5"] > 0)).sum()
+                ),
+                **{f"n_estimated_by_{m}": int(subset[m].notna().sum()) for m in methods},
             }
         )
+    return pd.DataFrame(rows)
+
+
+def leverage_share(race5: Sequence[float]) -> float:
+    """Percentage of the reference signal carried by its single largest locus.
+
+    The feasibility statistic for a restricted regression: at 95 % one locus
+    *is* the fit, at ~14 % the set has a usable spread.
+    """
+    race5 = np.asarray(race5, dtype=float)
+    total = race5.sum()
+    if total <= 0:
+        return float("nan")
+    return float(100.0 * race5.max() / total)
+
+
+def l1base_restricted_fits(
+    wide: pd.DataFrame,
+    elements: pd.DataFrame,
+    locus_set: str = PRIMARY_LOCUS_SET,
+    methods: Sequence[str] = METHODS,
+) -> pd.DataFrame:
+    """Refit the benchmark on L1Base-restricted locus sets (answers R2-1).
+
+    Each restriction is intersected with *locus_set*, so the comparison stays
+    matched across methods, and is reported both whole and without its own
+    highest-leverage locus.  ``leverage_share`` is what makes a restriction
+    interpretable: the ORF-defined tracks alone leave a set in which one locus
+    carries over 90 % of the reference signal, so their high R² is an artefact
+    of a single point; adding the full-length track brings that down to a
+    third, and the full-length track on its own to roughly a seventh.
+
+    Args:
+        wide: Table from :func:`load_locus_table`.
+        elements: Table from :func:`load_l1base_elements`.
+        locus_set: Matched locus set to intersect with.
+        methods: Methods to evaluate.
+
+    Returns:
+        One row per (restriction, variant, method).
+    """
+    annotated = annotate_l1base_overlap(wide, elements)
+    restrictions: Dict[str, Set[str] | None] = {"none": None}
+    restrictions.update(l1base_restrictions(annotated))
+    composites = composite_members(elements)
+
+    rows = []
+    for name, regions in restrictions.items():
+        members = composites.get(name, (name,))
+        orthogonal = (
+            False
+            if regions is None
+            else bool(elements.loc[elements["track"].isin(members), "orthogonal"].all())
+        )
+        base = locus_subset(annotated, locus_set, methods[0])
+        if regions is not None:
+            base = base[base["region"].isin(regions)]
+        if base.empty:
+            logger.warning(f"L1Base restriction {name!r} leaves no loci; skipping")
+            continue
+        dominant = base.loc[base["race5"].idxmax(), "region"]
+        for variant, dropped in (("full", ()), ("drop_dominant", (dominant,))):
+            kept_regions = set(base["region"]) - set(dropped)
+            for method in methods:
+                kept = locus_subset(annotated, locus_set, method)
+                kept = kept[kept["region"].isin(kept_regions)]
+                rows.append(
+                    {
+                        "restriction": name,
+                        "orthogonal": orthogonal,
+                        "locus_set": locus_set,
+                        "variant": variant,
+                        "n": len(kept),
+                        "leverage_share_pct": leverage_share(kept["race5"]),
+                        "dominant_locus": dominant,
+                        "method": method,
+                        "pearson_r2": pearson_r2(kept["race5"], kept[method]),
+                        "spearman_rho": spearman_rho(kept["race5"], kept[method]),
+                    }
+                )
     return pd.DataFrame(rows)
 
 
@@ -583,27 +879,32 @@ OUTPUT_TABLES: Tuple[str, ...] = (
     "robustness_bootstrap_dr2",
     "robustness_paired_wins",
     "robustness_l1base_overlap",
+    "robustness_l1base_fits",
+    "robustness_l1base_bootstrap",
     "robustness_dynamic_range",
 )
 
 
 def robustness(
     table_path: Path,
-    bed_path: Path | None = None,
+    l1base_dir: Path | None = None,
     locus_set: str = PRIMARY_LOCUS_SET,
     methods: Sequence[str] = METHODS,
     n_boot: int = DEFAULT_N_BOOT,
     seed: int = DEFAULT_SEED,
+    min_element_bp: int | None = MIN_ELEMENT_BP,
 ) -> Dict[str, pd.DataFrame]:
     """Compute every robustness table from the tidy 5'RACE comparison table.
 
     Args:
         table_path: Tidy CSV (see :func:`load_locus_table`).
-        bed_path: L1Base2 BED; the overlap table is skipped when ``None``.
+        l1base_dir: Directory of L1Base2 BED tracks; the orthogonal-annotation
+            tables are skipped when ``None``.
         locus_set: Primary locus set for leave-one-out and the bootstrap.
         methods: Methods to evaluate.
         n_boot: Bootstrap resamples.
         seed: RNG seed.
+        min_element_bp: Element-body length floor for L1Base elements.
 
     Returns:
         Mapping of output stem (see :data:`OUTPUT_TABLES`) to table.
@@ -622,12 +923,38 @@ def robustness(
         ),
         "robustness_dynamic_range": dynamic_range_summary(wide, methods=methods),
     }
-    if bed_path is not None:
+
+    if l1base_dir is not None:
+        elements = load_l1base_elements(l1base_dir, min_element_bp=min_element_bp)
         tables["robustness_l1base_overlap"] = l1base_overlap_counts(
-            wide, bed_path, methods=methods
+            wide, elements, methods=methods
         )
+        tables["robustness_l1base_fits"] = l1base_restricted_fits(
+            wide, elements, locus_set=locus_set, methods=methods
+        )
+        # Bootstrap only the restrictions large enough to fit, so a two-locus
+        # subset cannot produce a confident-looking interval.
+        annotated = annotate_l1base_overlap(wide, elements)
+        boots = []
+        for name, regions in l1base_restrictions(annotated).items():
+            try:
+                boots.append(
+                    bootstrap_delta_r2(
+                        wide,
+                        locus_set=locus_set,
+                        contrasts=DEFAULT_CONTRASTS[:2],
+                        n_boot=n_boot,
+                        seed=seed,
+                        restrict_to=regions,
+                        restriction_name=name,
+                    )
+                )
+            except ValueError as exc:
+                logger.warning(f"L1Base restriction {name!r} not bootstrapped: {exc}")
+        if boots:
+            tables["robustness_l1base_bootstrap"] = pd.concat(boots, ignore_index=True)
     else:
-        logger.warning("no L1Base BED given; skipping the orthogonal-annotation counts")
+        logger.warning("no L1Base directory given; skipping the orthogonal-annotation tables")
 
     wins = tables["robustness_paired_wins"]
     for _, row in wins[wins["like_for_like_only"]].iterrows():
