@@ -8,6 +8,7 @@ Run as ``python -m trap.analysis``.  Commands:
 * ``select-k``      — apply the quantitative selection criterion to existing tables
 * ``robustness``    — 5'RACE locus-set / leave-one-out / bootstrap / L1Base tables
 * ``synthetic-strata`` — stratified statistics for the synthetic insertion benchmark
+* ``enrichment``    — domain + ORF0 enrichment of top-attribution k-mers
 
 Every command seeds all RNGs (:func:`trap.utils.seeding.set_global_seed`) and
 writes a ``manifest.json`` (git commit, seed, input SHA-256, parameters) next to
@@ -28,6 +29,10 @@ import typer
 
 import trap.config.config  # noqa: F401  (registers STAGE level + tqdm-loguru)
 from trap.analysis.ablation import ablation as run_ablation
+from trap.analysis.enrichment import (
+    enrichment as run_enrichment,
+    verify_against_published,
+)
 from trap.analysis.kmer_counting import (
     _jellyfish_available,
     _seqkit_available,
@@ -275,6 +280,47 @@ def robustness(
             "min_element_bp": min_element_bp,
         },
         inputs=inputs,
+        outputs=[f"{stem}.csv" for stem in tables],
+    )
+
+
+@app.command()
+def enrichment(
+    attribution: Path = typer.Option(
+        Path("results/interpret/per_kmer_attribution.csv"),
+        help="per_kmer_attribution.csv from `trap.analysis.interpret attribute`",
+    ),
+    published: Optional[Path] = typer.Option(
+        Path("results/interpret/domain_enrichment.csv"),
+        help="Published domain_enrichment.csv, checked for exact reproduction",
+    ),
+    out: Path = typer.Option(Path("results/interpret")),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Domain + ORF0 enrichment of top-attribution k-mers (no model re-run)."""
+    set_verbosity(verbosity)
+    logger.log("STAGE", f"[enrichment] {attribution} -> {out}")
+    tables = run_enrichment(attribution)
+    if published and published.exists():
+        report = verify_against_published(tables["domain_enrichment.recomputed"], published)
+        tables["domain_enrichment.verification"] = report
+        if not report["matches"].all():
+            raise typer.Exit(code=1)
+    for stem, frame in tables.items():
+        # Row order follows the consensus, so no sort key is needed.
+        _write_table(frame.to_dict("records"), out, stem, [])
+    manifest.write(
+        out,
+        filename="manifest.enrichment.json",
+        command="enrichment",
+        seed=3469,
+        params={"top_quantile": 0.90},
+        inputs={
+            "attribution": {
+                "path": str(attribution),
+                "sha256": manifest.sha256_file(attribution),
+            }
+        },
         outputs=[f"{stem}.csv" for stem in tables],
     )
 
