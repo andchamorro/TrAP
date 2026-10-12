@@ -21,6 +21,14 @@
 # space is reconstructed to be consistent with — and to contain — the final
 # values. It is identified as reconstructed in the response letter.
 #
+# Confirmed by the author 2026-10-12: the search that produced the reported model
+# ran **128 trials** over batch sizes **{8, 16}** (not 32), and Figure 5 displays
+# the **16 trials with the shortest total training time**. Earlier drafts of this
+# file guessed a population of 8 and a batch choice of {8, 16, 32}; both are
+# corrected above. Note that batch 8 WAS searched here — the "batch=8 dropped"
+# comment in config/tuning/classification_optuna.yaml belongs to the later,
+# independent Optuna track and does not describe this search.
+#
 # NOT loaded by code: the Ray Tune driver ran outside this repo and the space
 # here is the reconstruction described above. It is nonetheless the search of
 # record for the published model, whose hyperparameters come from
@@ -36,7 +44,8 @@ scheduler: PopulationBasedTraining
 metric: eval_f1
 mode: max
 perturbation_interval: 1            # epochs
-population_size: 8
+num_trials: 128                     # trials run (author, 2026-10-12)
+population_size: 128                # Ray Tune PBT: the population IS the trial set
 quantile_fraction: 0.25
 resample_probability: 0.25
 
@@ -55,7 +64,7 @@ search_space:
     values: [0.0, 0.05, 0.1, 0.2]
   per_device_train_batch_size:
     sampler: choice
-    values: [8, 16, 32]
+    values: [8, 16]                 # corrected 2026-10-12: 32 was never searched
   num_train_epochs:
     sampler: choice
     values: [3, 5, 8]
