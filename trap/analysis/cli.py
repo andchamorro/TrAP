@@ -6,7 +6,7 @@ Run as ``python -m trap.analysis``.  Commands:
 * ``kmer-spectrum`` — entropy/redundancy spectrum for one corpus
 * ``ablation``      — k -> classification macro-F1 sweep
 * ``select-k``      — apply the quantitative selection criterion to existing tables
-* ``robustness``    — 5'RACE locus-set / leave-one-out / bootstrap robustness tables
+* ``robustness``    — 5'RACE locus-set / leave-one-out / bootstrap / L1Base tables
 
 Every command seeds all RNGs (:func:`trap.utils.seeding.set_global_seed`) and
 writes a ``manifest.json`` (git commit, seed, input SHA-256, parameters) next to
@@ -35,6 +35,8 @@ from trap.analysis.kmer_counting import (
 )
 from trap.analysis.robustness import (
     DEFAULT_N_BOOT,
+    L1BASE_TRACKS,
+    MIN_ELEMENT_BP,
     PRIMARY_LOCUS_SET,
     robustness as run_robustness,
 )
@@ -213,10 +215,13 @@ def robustness(
         Path("results/srr_experiment/l1em_salmon_fpm.csv"),
         help="Tidy 5'RACE comparison table (locus x method)",
     ),
-    l1base_bed: Optional[Path] = typer.Option(
-        Path("data/ref/l1base/hsflil1_8438.bed"),
-        "--l1base-bed",
-        help="L1Base2 FLI-L1 BED for the orthogonal-annotation counts",
+    l1base_dir: Optional[Path] = typer.Option(
+        Path("data/ref/l1base"),
+        "--l1base-dir",
+        help="Directory of L1Base2 BED tracks for the orthogonal-annotation analyses",
+    ),
+    min_element_bp: int = typer.Option(
+        MIN_ELEMENT_BP, help="Keep L1Base elements whose body exceeds this length"
     ),
     locus_set: str = typer.Option(
         PRIMARY_LOCUS_SET, help="Primary locus set for leave-one-out and the bootstrap"
@@ -230,23 +235,40 @@ def robustness(
     set_verbosity(verbosity)
     set_global_seed(seed)
     logger.log("STAGE", f"[robustness] {table} -> {out} (primary set {locus_set})")
-    bed = l1base_bed if l1base_bed and l1base_bed.exists() else None
-    if l1base_bed and bed is None:
-        logger.warning(f"L1Base BED missing at {l1base_bed}; overlap counts skipped")
-    tables = run_robustness(table, bed_path=bed, locus_set=locus_set, n_boot=n_boot, seed=seed)
+    l1base = l1base_dir if l1base_dir and l1base_dir.is_dir() else None
+    if l1base_dir and l1base is None:
+        logger.warning(f"L1Base directory missing at {l1base_dir}; overlap analyses skipped")
+    tables = run_robustness(
+        table,
+        l1base_dir=l1base,
+        locus_set=locus_set,
+        n_boot=n_boot,
+        seed=seed,
+        min_element_bp=min_element_bp,
+    )
     for stem, frame in tables.items():
         # Row order is fixed by construction (definition x method), so no sort
         # key is needed for byte-stable output.
         _write_table(frame.to_dict("records"), out, stem, [])
     inputs = {"table": {"path": str(table), "sha256": manifest.sha256_file(table)}}
-    if bed is not None:
-        inputs["l1base_bed"] = {"path": str(bed), "sha256": manifest.sha256_file(bed)}
+    if l1base is not None:
+        for track in L1BASE_TRACKS:
+            path = l1base / track.filename
+            if path.exists():
+                inputs[f"l1base_{track.name}"] = {
+                    "path": str(path),
+                    "sha256": manifest.sha256_file(path),
+                }
     manifest.write(
         out,
         filename="manifest.robustness.json",
         command="robustness",
         seed=seed,
-        params={"locus_set": locus_set, "n_boot": n_boot},
+        params={
+            "locus_set": locus_set,
+            "n_boot": n_boot,
+            "min_element_bp": min_element_bp,
+        },
         inputs=inputs,
         outputs=[f"{stem}.csv" for stem in tables],
     )
@@ -271,13 +293,18 @@ def run(
         n_jobs = cfg.n_jobs
     else:
         n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", 1))
-    logger.log("STAGE", f"[run] n_jobs={n_jobs} (from {'config' if cfg.n_jobs is not None else 'SLURM_CPUS_PER_TASK/default'})")
+    logger.log(
+        "STAGE",
+        f"[run] n_jobs={n_jobs} (from {'config' if cfg.n_jobs is not None else 'SLURM_CPUS_PER_TASK/default'})",
+    )
 
     inputs: dict = {}
     spectrum_rows: List[dict] = []
     _streaming = _seqkit_available() and _jellyfish_available()
     if _streaming:
-        logger.log("STAGE", "[run] seqkit+jellyfish detected — streaming path active (no load_corpus)")
+        logger.log(
+            "STAGE", "[run] seqkit+jellyfish detected — streaming path active (no load_corpus)"
+        )
     else:
         logger.log("STAGE", "[run] seqkit or jellyfish missing — using legacy load_corpus path")
 

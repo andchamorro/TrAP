@@ -18,11 +18,17 @@ from trap.analysis.robustness import (
     LOCUS_SET_DEFINITIONS,
     MAX_RESIDUAL_LOCUS,
     METHODS,
+    L1BaseTrack,
+    annotate_l1base_overlap,
     bootstrap_delta_r2,
     dynamic_range_summary,
     filter_definition_grid,
     l1base_overlap_counts,
+    l1base_restricted_fits,
+    l1base_restrictions,
     leave_one_out,
+    leverage_share,
+    load_l1base_elements,
     load_locus_table,
     locus_subset,
     paired_wins,
@@ -326,24 +332,168 @@ def test_bootstrap_delta_r2_refuses_an_unmatched_locus_set(wide):
 # ── Descriptive tables ────────────────────────────────────────────────────────
 
 
-def test_l1base_overlap_counts_use_half_open_intervals(tmp_path, wide):
-    bed = tmp_path / "l1base.bed"
-    bed.write_text(
+# Two miniature L1Base tracks.  INTACT carries a 1 kb flank per side (2000
+# total) like the real FLI/ORF2 downloads; LONG carries 4000 total like FLnI.
+_INTACT = L1BaseTrack("INTACT", "intact.bed", 2000, True, "ORF-intact, test fixture")
+_LONG = L1BaseTrack("LONG", "long.bed", 4000, False, "full-length, test fixture")
+
+
+@pytest.fixture
+def l1base_dir(tmp_path):
+    """Two BED tracks with a `track` header line, as L1Base ships them."""
+    directory = tmp_path / "l1base"
+    directory.mkdir()
+    # Body 7 kb (span 9000 - 2000 flank) over chr1:100-200, so it passes a 6 kb
+    # floor; the second element's body is 1 kb and must be filtered out.
+    (directory / "intact.bed").write_text(
         "\n".join(
             [
-                "chr1\t150\t250\tUID-1",  # overlaps chr1:100-200
-                "chr1\t200\t300\tUID-2",  # abuts chr1:100-200, overlaps nothing
-                "chr3\t100\t200\tUID-3",  # chromosome absent from the benchmark
+                'track name=test description="fixture" useScore=0',
+                "chr1\t-900\t8100\tUID-1\t0\t+",
+                "chr1\t200\t3200\tUID-2\t0\t+",
             ]
         )
         + "\n"
     )
-    counts = l1base_overlap_counts(wide, bed).set_index("stratum")["n"]
-    assert counts["all_benchmark_loci"] == len(_LOCI)
-    assert counts["l1base_overlap"] == 1
-    assert counts["l1base_overlap_race5_gt_1pct"] == 1
-    assert counts["l1base_overlap_in_common_set"] == 1
-    assert counts["l1base_overlap_estimated_by_L1EM"] == 1
+    # Body 7 kb (span 11000 - 4000 flank) over chr1:900-1000 only.
+    (directory / "long.bed").write_text(
+        "\n".join(
+            [
+                'track name=test description="fixture" useScore=0',
+                "chr1\t500\t11500\tUID-3\t0\t+",
+            ]
+        )
+        + "\n"
+    )
+    return directory
+
+
+@pytest.fixture
+def elements(l1base_dir):
+    return load_l1base_elements(l1base_dir, tracks=(_INTACT, _LONG), min_element_bp=6000)
+
+
+def test_load_l1base_elements_skips_track_lines_and_short_bodies(elements):
+    assert set(elements["track"]) == {"INTACT", "LONG"}
+    assert set(elements["uid"]) == {"UID-1", "UID-3"}  # UID-2's body is 1 kb
+    assert (elements["element_bp"] == 7000).all()
+    assert elements.loc[elements["track"] == "INTACT", "orthogonal"].all()
+    assert not elements.loc[elements["track"] == "LONG", "orthogonal"].any()
+
+
+def test_load_l1base_elements_keeps_short_bodies_when_unfiltered(l1base_dir):
+    unfiltered = load_l1base_elements(l1base_dir, tracks=(_INTACT,), min_element_bp=None)
+    assert set(unfiltered["uid"]) == {"UID-1", "UID-2"}
+
+
+def test_load_l1base_elements_raises_when_no_track_is_present(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        load_l1base_elements(tmp_path, tracks=(_INTACT,))
+
+
+def test_annotate_l1base_overlap_is_half_open_and_adds_composites(wide, elements):
+    annotated = annotate_l1base_overlap(wide, elements)
+    # UID-1 spans -900..8100, so it covers every locus up to chr1:1100-1200;
+    # the half-open rule is what excludes a merely-abutting interval, which is
+    # covered by the dedicated element below.
+    # UID-1 spans -900..8100 and UID-3 spans 500..11500, so each covers a known
+    # contiguous run of the fixture's loci.
+
+    def _covered(start, end):
+        return {
+            r
+            for r in _LOCI
+            if int(r.split(":")[1].split("-")[0]) < end and int(r.split("-")[-1]) > start
+        }
+
+    assert set(annotated.loc[annotated["l1base_INTACT"], "region"]) == _covered(-900, 8100)
+    assert set(annotated.loc[annotated["l1base_LONG"], "region"]) == _covered(500, 11500)
+    assert "l1base_union" in annotated.columns
+    assert (
+        annotated["l1base_union"] == (annotated["l1base_INTACT"] | annotated["l1base_LONG"])
+    ).all()
+    # `orf_defined` is the composite of the orthogonal tracks only.
+    assert (annotated["l1base_orf_defined"] == annotated["l1base_INTACT"]).all()
+
+
+def test_overlap_is_half_open(wide):
+    abutting = pd.DataFrame(
+        [
+            # Body 1000..7000 after the 2000 flank is removed from 0..8000;
+            # the stored interval is what overlap uses, and 100..200 abuts 200.
+            {
+                "track": "T",
+                "chrom": "chr1",
+                "start": 200,
+                "end": 300,
+                "uid": "a",
+                "orthogonal": True,
+            }
+        ]
+    )
+    annotated = annotate_l1base_overlap(wide, abutting)
+    assert "chr1:100-200" not in set(annotated.loc[annotated["l1base_T"], "region"])
+    assert "chr1:300-400" not in set(annotated.loc[annotated["l1base_T"], "region"])
+
+
+def test_l1base_restrictions_returns_one_set_per_flag(wide, elements):
+    annotated = annotate_l1base_overlap(wide, elements)
+    restrictions = l1base_restrictions(annotated)
+    assert {"INTACT", "LONG", "union", "orf_defined"} <= set(restrictions)
+    assert restrictions["union"] == restrictions["INTACT"] | restrictions["LONG"]
+
+
+def test_l1base_overlap_counts_report_per_track_and_orthogonality(wide, elements):
+    counts = l1base_overlap_counts(wide, elements).set_index("restriction")
+    assert counts.loc["none", "n_loci"] == len(_LOCI)
+    assert counts.loc["INTACT", "orthogonal"]
+    assert not counts.loc["LONG", "orthogonal"]
+    assert not counts.loc["union", "orthogonal"]  # mixes an RM-derived track
+    assert counts.loc["union", "n_loci"] >= counts.loc["INTACT", "n_loci"]
+    for restriction in counts.index:
+        assert (
+            counts.loc[restriction, "n_common_and_detected"]
+            <= counts.loc[restriction, "n_common_set"]
+        )
+        assert (
+            counts.loc[restriction, "n_race5_gt_1pct"] <= counts.loc[restriction, "n_race5_gt_0"]
+        )
+
+
+def test_leverage_share_flags_a_one_locus_set():
+    assert leverage_share([10.0, 0.1, 0.1]) == pytest.approx(100 * 10.0 / 10.2)
+    assert leverage_share([1.0, 1.0, 1.0, 1.0]) == pytest.approx(25.0)
+    assert np.isnan(leverage_share([0.0, 0.0]))
+
+
+def test_l1base_restricted_fits_carry_leverage_and_drop_dominant(wide, elements):
+    fits = l1base_restricted_fits(wide, elements)
+    assert set(fits["variant"]) == {"full", "drop_dominant"}
+    assert "none" in set(fits["restriction"])
+    for (restriction, variant), group in fits.groupby(["restriction", "variant"]):
+        assert len(group) == len(METHODS)
+        assert group["n"].nunique() == 1  # matched across methods
+    for restriction, group in fits.groupby("restriction"):
+        full = group[group["variant"] == "full"]["n"].iloc[0]
+        dropped = group[group["variant"] == "drop_dominant"]["n"].iloc[0]
+        assert dropped == full - 1
+    assert fits["leverage_share_pct"].between(0.0, 100.0).all()
+    assert fits["dominant_locus"].notna().all()
+
+
+def test_bootstrap_accepts_a_restriction_and_labels_it(wide, elements):
+    annotated = annotate_l1base_overlap(wide, elements)
+    regions = l1base_restrictions(annotated)["union"]
+    out = bootstrap_delta_r2(wide, n_boot=100, restrict_to=regions, restriction_name="union")
+    assert set(out["restriction"]) == {"union"}
+    assert (out["n"] <= len(_COMMON_DETECTED)).all()
+    unrestricted = bootstrap_delta_r2(wide, n_boot=100)
+    assert set(unrestricted["restriction"]) == {"none"}
+
+
+def test_bootstrap_refuses_a_restriction_that_leaves_too_few_loci(wide):
+    with pytest.raises(ValueError, match="too few to fit"):
+        bootstrap_delta_r2(wide, n_boot=10, restrict_to={"chr1:100-200"}, restriction_name="tiny")
 
 
 def test_dynamic_range_summary_separates_the_two_unit_scales(wide):
