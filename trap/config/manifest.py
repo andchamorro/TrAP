@@ -47,8 +47,8 @@ def _git_commit() -> Optional[str]:
         return None
 
 
-def write(out_dir: Path, **kwargs: Any) -> Path:
-    """Write ``manifest.json`` to *out_dir* and return its path.
+def write(out_dir: Path, filename: str = "manifest.json", **kwargs: Any) -> Path:
+    """Write a manifest JSON to *out_dir* and return its path.
 
     Standard header fields (``trap_version``, ``git_commit``,
     ``timestamp_utc``) are written first; all ``**kwargs`` are merged on
@@ -56,6 +56,9 @@ def write(out_dir: Path, **kwargs: Any) -> Path:
 
     Args:
         out_dir: Directory to write the manifest (created if needed).
+        filename: Manifest file name.  Override it when a command writes into
+            a directory that already carries another command's manifest, so
+            upstream provenance is not clobbered.
         **kwargs: Arbitrary manifest fields.
 
     Returns:
@@ -85,7 +88,7 @@ def write(out_dir: Path, **kwargs: Any) -> Path:
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
     }
     manifest.update(kwargs)
-    path = out_dir / "manifest.json"
+    path = out_dir / filename
     with open(path, "w") as f:
         json.dump(manifest, f, indent=2, default=str)
     return path
