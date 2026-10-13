@@ -4,6 +4,18 @@
 # external L1EM repo, resumable. Requires scripts/sh/align_star.sh to have run first.
 #
 #   L1EM_PATH=/path/to/L1EM bash scripts/sh/run_l1em.sh
+#
+# COST, MEASURED (matters when this is pointed at a real library rather than a
+# synthetic grid cell). A 200k-pair probe took 101 s end to end -- 14 s bwa mem
+# plus 87 s for L1EM's own realign -> extract -> candidate-align -> EM. Scaled to
+# ~33M pairs that is an estimated ~4.6 h WALL at 16 cores, i.e. ~9 h at the 8
+# cores 63_run_baseline.slurm requests, against its 8 h walltime. So:
+#   - one array task per library, never one fat sequential job: the SU cost is
+#     identical (cores x elapsed) but a late failure then loses one library, and
+#     12 libraries sequentially would exceed most partitions' walltime cap;
+#   - raise --time before running this on a full-depth library. The scaling is an
+#     EXTRAPOLATION from the probe, not an observation at full depth -- EM
+#     convergence need not stay linear the way bwa mem's read-proportional cost does.
 set -euo pipefail
 
 L1_SOURCE="${L1_SOURCE:-l1base}"; CHR="${CHR:-chr1}"; FCOV="${FCOV:-5}"

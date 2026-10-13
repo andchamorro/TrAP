@@ -9,6 +9,15 @@
 # Default values
 FORCE_BUILD=false
 THREADS=8
+# Library type, passed to `salmon quant -l`. ISR is the measured type for the
+# libraries this was written for, NOT a default to carry over untested: it must be
+# re-measured for each new library and then pinned here. Leaving salmon on "A"
+# would let it auto-detect per quantification, which can silently disagree between
+# libraries that are later compared side by side. The value salmon actually used
+# is recorded next to each quant (see run_salmon below), so an assumption that no
+# longer holds shows up in the log instead of in the abundances.
+# For reference: SMARTer Stranded Total RNA-seq v3 libraries are expected to be ISR.
+LIB_TYPE="${LIB_TYPE:-ISR}"
 
 # Help message
 print_help() {
@@ -127,10 +136,16 @@ run_salmon() {
     local label=$2
     local outdir="${OUTPUT_DIR}/${label}"
     mkdir -p "$outdir"
-    echo "Running Salmon for $label..."
-    salmon quant -q -i "$index" -l ISR -1 "$FILTERED_R1" -2 "$FILTERED_R2" \
+    echo "Running Salmon for $label (lib_type=$LIB_TYPE)..."
+    salmon quant -q -i "$index" -l "$LIB_TYPE" -1 "$FILTERED_R1" -2 "$FILTERED_R2" \
         --validateMappings -o "$outdir" --threads $THREADS \
         > "$outdir/salmon.out" 2> "$outdir/salmon.err"
+    # Record what salmon used, so a wrong LIB_TYPE is visible rather than silent.
+    local fmt
+    fmt=$(sed -n 's/.*"expected_format"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        "$outdir/lib_format_counts.json" 2>/dev/null | head -1)
+    echo "lib_type requested=$LIB_TYPE observed=${fmt:-unknown}" \
+        | tee "$outdir/lib_type.txt"
 }
 run_salmon "$ONLY_INDEX" "only"
 run_salmon "$RUNON_INDEX" "runon"
