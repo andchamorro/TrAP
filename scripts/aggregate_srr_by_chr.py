@@ -78,6 +78,82 @@ def load_rm_line1(rm_outfile: Path) -> dict:
     return rmtarget
 
 
+def restrict_rm_loci(
+    rmtarget: dict,
+    bed_files: list,
+    min_length: int,
+    name_to_contig: dict,
+) -> dict:
+    """Restrict the RepeatMasker loci to curated full-length elements.
+
+    Applied in order: first keep only loci intersecting the union of ``bed_files``
+    (the L1Base2 full-length tracks, whose coordinates are UCSC ``chrN`` names and
+    are mapped through ``name_to_contig`` onto the accessions the ``.out`` uses),
+    then keep only those at least ``min_length`` bp long.
+
+    Reads overlapping a locus that the restriction drops no longer match any
+    interval, so the downstream NEGATIVE fill absorbs them. That is a property of
+    the restriction, not a separate choice.
+
+    Args:
+        rmtarget: ``load_rm_line1`` output.
+        bed_files: BED files whose union defines the curated set; empty to skip.
+        min_length: Minimum locus length in bp; 0 to skip.
+        name_to_contig: UCSC name -> ``.out`` contig accession.
+
+    Returns:
+        A ``rmtarget``-shaped dict holding only the retained loci.
+    """
+    union: dict = defaultdict(list)
+    for bed in bed_files:
+        with open(bed) as fh:
+            for line in fh:
+                if line.startswith("track") or not line.strip():
+                    continue
+                f = line.split("\t")
+                contig = name_to_contig.get(f[0])
+                if contig:
+                    union[contig].append((int(f[1]), int(f[2])))
+    merged = {}
+    for contig, spans in union.items():
+        spans.sort()
+        out = [list(spans[0])]
+        for start, stop in spans[1:]:
+            if start <= out[-1][1]:
+                out[-1][1] = max(out[-1][1], stop)
+            else:
+                out.append([start, stop])
+        merged[contig] = (
+            np.array([a for a, _ in out]),
+            np.array([b for _, b in out]),
+        )
+
+    def intersects(contig, start, stop):
+        hit = merged.get(contig)
+        if hit is None:
+            return False
+        starts, stops = hit
+        i = int(np.searchsorted(starts, stop, side="right")) - 1
+        return bool(i >= 0 and stops[i] > start)
+
+    kept: dict = {}
+    for key, loci in rmtarget.items():
+        keep = []
+        for a in loci:
+            start, stop = int(a["query_start"]), int(a["query_end"])
+            if stop - start < min_length:
+                continue
+            if merged and not intersects(a["query_name"], start, stop):
+                continue
+            keep.append(a)
+        if keep:
+            kept[key] = keep
+    n_in = sum(len(v) for v in rmtarget.values())
+    n_out = sum(len(v) for v in kept.values())
+    logger.info(f"locus restriction: {n_in:,} -> {n_out:,} RepeatMasker loci")
+    return kept
+
+
 def alignments_handle(path: Path) -> pysam.AlignmentFile:
     mode = {".bam": "rb", ".sam": "r", ".cram": "rc"}.get(Path(path).suffix)
     if mode is None:
@@ -402,6 +478,16 @@ def srr4099955(
     translator: Path = typer.Option(
         "data/annotations/GCF_000001405.40_GRCh38.p14_assembly_report.trans"
     ),
+    l1base_bed: list = typer.Option(
+        [
+            "data/ref/l1base/hsflil1_8438.bed",
+            "data/ref/l1base/hsflnil1_8438_rm.bed",
+        ],
+        help="L1Base2 full-length tracks (FLI + FLnI) whose union restricts the loci",
+    ),
+    min_locus_length: int = typer.Option(
+        6000, help="Minimum RepeatMasker locus length in bp, applied after the BED union"
+    ),
     out_dir: Path = typer.Option("results/srr4099955"),
 ):
     """Aggregate SRR4099955 (Albert OHE + BWA RepeatMasker) and the distilled variants."""
@@ -423,6 +509,13 @@ def srr4099955(
     ohe12 = one_hot(avg12)[classes]
 
     rm = load_rm_line1(rm_out)
+    if l1base_bed or min_locus_length:
+        rm = restrict_rm_loci(
+            rm,
+            [Path(b) for b in l1base_bed],
+            min_locus_length,
+            {v: k for k, v in ncbi2common.items()},
+        )
     bam = alignments_handle(bwa_bam)
     logger.info("BWA RepeatMasker-overlap fractions (single reads)")
     bwa_frac = rm_fraction(
@@ -462,6 +555,8 @@ def srr4099955(
             "scores_1m": scores_1m,
             "rm_out": rm_out,
             "translator": translator,
+            "l1base_bed": [str(b) for b in l1base_bed],
+            "min_locus_length": min_locus_length,
         },
     )
 

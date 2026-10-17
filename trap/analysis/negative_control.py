@@ -95,9 +95,10 @@ def load_annotation_density(
     This is the covariate the composition hypothesis actually needs: how much
     LINE-1 each chromosome *contains*, independent of how deeply it was
     sequenced.  The per-chromosome class totals in the aggregation cannot serve
-    that role — in this sample the alignment baseline's three classes are 96 %
-    LINE-1 (NEGATIVE is 692 of 28,435), so their sum is a LINE-1 abundance
-    measure, not a library-depth measure.
+    that role — in this sample the alignment baseline's three classes are 86 %
+    LINE-1 (NEGATIVE is 4,121 of 29,993 under the full-length L1Base2 / 6 kb
+    locus restriction), so their sum is a LINE-1 abundance measure, not a
+    library-depth measure.
 
     Args:
         bed_path: Annotation BED whose name field starts with the family
