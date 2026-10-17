@@ -1,0 +1,48 @@
+{
+  "title": "TrAP: A Transformers Analysis Pipeline to Evaluate LINE-1 RNA Sequence Content",
+  "description": "<p>TrAP treats DNA as language to detect and quantify LINE-1 (L1) retroelements in short- and long-read RNA-seq data. Reads are split into k-mers, tokenized via a deterministic canonical k-mer hash, and classified read by read as L1HS, L1PA or NEGATIVE by a custom ALBERT transformer trained directly on the supervised classification task. The read-level classifier feeds two abundance estimators (ALBERT with Salmon and ALBERT with expectation-maximization), which quantify LINE-1 elements defined by RepeatMasker annotations on GRCh38.p14.</p><p>The pipeline is benchmarked against Salmon, L1EM, HTSeq and TEtranscripts on a synthetic chromosome 1 insertion series with controlled insertion load, deletion probability and mutation rate, and against HEK293 short-read RNA-seq with 5' rapid amplification of cDNA ends (5'RACE) long-read sequencing as an orthogonal locus-level reference.</p><p>Companion software archive for the manuscript \"A Transformers Analysis Pipeline (TrAP) to Evaluate LINE-1 RNA Sequence Content\" (Chamorro-Parejo and Ramos).</p>",
+  "upload_type": "software",
+  "version": "0.0.1",
+  "license": "apache-2.0",
+  "creators": [
+    {
+      "name": "Chamorro-Parejo, Andres D.",
+      "affiliation": "Center for Genomic and Precision Medicine, Texas A&M Institute of Biosciences and Technology, Texas Medical Center, Houston, TX, United States",
+      "orcid": "0000-0002-1716-9027"
+    },
+    {
+      "name": "Ramos, Kenneth S.",
+      "affiliation": "Center for Genomic and Precision Medicine, Texas A&M Institute of Biosciences and Technology, Texas Medical Center, Houston, TX, United States",
+      "orcid": "0000-0002-0692-4066"
+    }
+  ],
+  "keywords": [
+    "LINE-1 retrotransposon",
+    "transposable element quantification",
+    "short-read RNA sequencing",
+    "transformer models",
+    "k-mer tokenization",
+    "regulatory RNAs",
+    "ALBERT",
+    "bioinformatics",
+    "genomics"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/andchamorro/TrAP",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://www.ncbi.nlm.nih.gov/sra/SRR3997504",
+      "relation": "references",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://www.ncbi.nlm.nih.gov/sra/SRR4099955",
+      "relation": "references",
+      "scheme": "url"
+    }
+  ]
+}

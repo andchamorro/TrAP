@@ -13,7 +13,7 @@ license = { file = "LICENSE" }
 readme = "README.md"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: BSD License"
+    "License :: OSI Approved :: Apache Software License"
 ]
 requires-python = "~=3.12.2"
 
