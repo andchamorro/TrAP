@@ -13,6 +13,7 @@ the TEtranscripts input, which actually received ``--outFilterMultimapNmax
 tested separately and asserted to differ.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -176,15 +177,28 @@ def test_l1em_runs_upstream_defaults(settings):
         assert "EM_threshold=1e-7" in text
 
 
-def test_versions_are_marked_verify_rather_than_guessed(settings):
-    """Unknown versions must be explicit, not invented."""
-    for method in settings["synthetic_benchmark"]["methods"]:
+def test_versions_are_recorded_with_their_source(settings):
+    """A quoted version must be non-empty and must say where it came from.
+
+    Salmon's version of record is the conda pin in ``envs/environment-dev.yml``;
+    an earlier form of this test asserted the opposite, on the premise that
+    ``salmon=2.1.2`` named no released version.  It does: bioconda carries Salmon
+    2.0.0 through 2.8.0.  The pin and the YAML are therefore asserted equal, so
+    that moving the pin forces this file to be re-checked instead of drifting.
+    """
+    methods = settings["synthetic_benchmark"]["methods"]
+    for method in methods:
         if "version" in method:
             assert method["version"], f"{method['name']} has an empty version field"
-    # The dev-env Salmon pin is not a real release and must not be quoted.
+            assert method.get(
+                "version_source"
+            ), f"{method['name']} quotes a version without recording its source"
+
     dev_env = PROJ_ROOT / "envs" / "environment-dev.yml"
-    if dev_env.exists() and "salmon=2.1.2" in dev_env.read_text():
-        salmon = next(
-            m for m in settings["synthetic_benchmark"]["methods"] if m["name"] == "Salmon"
-        )
-        assert salmon["version"] == "VERIFY"
+    if dev_env.exists():
+        pins = re.findall(r"^\s*-\s*salmon=([^\s#]+)", dev_env.read_text(), re.MULTILINE)
+        if pins:
+            salmon = next(m for m in methods if m["name"] == "Salmon")
+            assert salmon["version"] == pins[0]
+            race5 = settings["hek293_5race_benchmark"]["salmon_family"]
+            assert race5["version"] == pins[0]
