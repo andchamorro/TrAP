@@ -21,13 +21,18 @@
 # candidate-enumeration and EM.  R2-6's requested condition is therefore met for
 # all of them, and no sensitivity run is outstanding.
 #
-# VERIFY BEFORE SUBMISSION — tool versions.  Module versions are pinned in
-# scripts/slurm/_common.sh and are reported as such.  The Python-packaged tools
-# (htseq-count, TEcount, salmon) are not pinned in envs/environment.yml, and
-# envs/environment-dev.yml carries `salmon=2.1.2`, which does not correspond to
-# any released Salmon version (Salmon is at 1.x) — do not quote it.  Capture the
-# real versions from the run logs on Grace (`salmon --version`, `htseq-count
-# --version`, `TEcount --version`) and fill `version:` below before submission.
+# Tool versions.  Module versions are pinned in scripts/slurm/_common.sh and are
+# reported as such.  The Python-packaged tools (htseq-count, TEcount, salmon) are
+# not pinned in envs/environment.yml, so the version of record for each is the
+# conda dependency where one exists and the current release otherwise (author
+# decision, 2026-10-16).  Salmon takes the pinned `salmon=2.1.2` from
+# envs/environment-dev.yml: 2.1.2 IS a released Salmon version (bioconda carries
+# 2.0.0 through 2.8.0), correcting an earlier note here that claimed otherwise.
+# htseq-count and TEcount are not pinned anywhere in envs/, so each takes its
+# current release.  These are environment specifications, NOT strings captured
+# from a `--version` call inside the reported runs: those logs live on Grace and
+# the local tree holds no salmon cmd_info.json, TEcount.out or htseq.err to read
+# a version from.  `version_source` records which of the two each entry is.
 
 modules:
   source: scripts/slurm/_common.sh
@@ -100,7 +105,8 @@ synthetic_benchmark:
       multimapping: >-
         handled internally by Salmon's EM over equivalence classes; no
         multi-mapping flag to set
-      version: VERIFY
+      version: "2.1.2"
+      version_source: conda dependency — envs/environment-dev.yml pins `salmon=2.1.2`
       assert_flags:
         - "salmon quant"
         - "-l A"
@@ -131,7 +137,10 @@ synthetic_benchmark:
         passes it (NONUNIQUE, default `all`), so the repository reproduces the
         reported configuration. No re-run was required — only the script was out
         of step with the runs, not the results.
-      version: VERIFY
+      version: "2.1.2"
+      version_source: >-
+        current release (HTSeq 2.1.2 on bioconda and PyPI); htseq-count is not
+        pinned in envs/environment.yml or envs/environment-dev.yml
       assert_flags:
         - "htseq-count -f bam -r pos"
         - "-t \"${FEATURE_TYPE}\""
@@ -151,7 +160,10 @@ synthetic_benchmark:
         RETAINED. --mode multi is TEtranscripts' own recommendation for
         transposable elements and distributes multi-mapping reads across TE
         annotations by EM. No change needed for this tool.
-      version: VERIFY
+      version: "2.2.4"
+      version_source: >-
+        current release (TEtranscripts 2.2.4 on bioconda and PyPI); TEcount is
+        not pinned in envs/environment.yml or envs/environment-dev.yml
       assert_flags:
         - "TEcount --sortByPos"
         - "--mode \"${TE_MODE}\""
@@ -184,7 +196,12 @@ synthetic_benchmark:
         (utilities/read_or_pair_overlap_bed.py sets flanking = 400, reflected in
         annotation/L1EM.400.bed) and is the LINE-1-recommended setting the
         manuscript already reports.
-      version: upstream L1EM repository, vendored unmodified — VERIFY commit
+      version: v1.0.0-4-ga50a237
+      version_source: >-
+        upstream L1EM repository vendored unmodified in .trap/L1EM at commit
+        a50a237 (2026-01-19), four commits after tag v1.0.0. L1EM runs in its own
+        environment (L1EM.yml: bwa 0.7.17, samtools 1.9, bedtools 2.27.1), which
+        is independent of the versions under `modules` above.
 
     - name: AlbertEM
       role: TrAP configuration — classifier filter then L1EM
@@ -211,6 +228,8 @@ hek293_5race_benchmark:
       kmerLen: 31
       libType: ISR
       validateMappings: true
+    version: "2.1.2"
+    version_source: conda dependency — envs/environment-dev.yml pins `salmon=2.1.2`
     classifier_filter: >-
       AlbertSalmon quantifies only the reads retained by
       `python -m trap.modeling.postprocessing filter-ids` (keeps P(NEGATIVE) <
