@@ -218,7 +218,12 @@ hek293_5race_benchmark:
       unfiltered reads. Both use the identical index and quant command, so the
       contrast isolates the classifier.
     assert_flags:
-      - "-l ISR"
+      # The library type is passed through LIB_TYPE, whose default is the
+      # measured ISR; assert both halves, as the HTSeq/TEcount entries do, so
+      # the guard follows the script instead of a literal that it no longer
+      # contains since the parameterisation in 582cec1.
+      - "-l \"$LIB_TYPE\""
+      - "LIB_TYPE=\"${LIB_TYPE:-ISR}\""
       - "--validateMappings"
       - "--kmerLen 31"
   reference_side:
