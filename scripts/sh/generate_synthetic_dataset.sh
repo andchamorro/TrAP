@@ -157,8 +157,16 @@ for power in ${POWERS}; do
             --power "${power}" --del-prob "${dp}" --seed "${SEED}" \
             --out-fasta "${art_fa}" --out-bed "${OUTPUT_DIR}/${base}.bed"
     fi
+    # Seed ART per grid cell. Without -rs, ART seeds from "system time in second"
+    # (art_illumina 2.5.8), so the reads were irreproducible and two cells started
+    # within the same second could even share a stream. The seed mirrors the
+    # per-cell RNG the Python generator derives from (seed, power, del_prob) rather
+    # than reusing one stream across cells. 10# forces base 10: "0100" would
+    # otherwise be parsed as octal.
+    dp_int=$((10#${dp/./}))
+    art_seed=$(( (SEED * 1000003 + power * 10007 + dp_int) % 2147483647 ))
     art_illumina ${art_sam_flag[@]+"${art_sam_flag[@]}"} -na -i "${art_fa}" -p -l "${ART_LEN}" -f "${FCOV}" \
-        -m "${ART_MFLEN}" -s "${ART_SDEV}" -ss "${ART_SS}" -o "${art_prefix}" \
+        -m "${ART_MFLEN}" -s "${ART_SDEV}" -ss "${ART_SS}" -rs "${art_seed}" -o "${art_prefix}" \
         > "${art_prefix}.art.log" 2>&1
     [[ "${GZIP}" == "1" ]] && gzip -f "${art_prefix}1.fq" "${art_prefix}2.fq"
     # The ART source FASTA is large and only needed for ART — drop it unless kept.
