@@ -15,6 +15,7 @@ Run as ``python -m trap.analysis``.  Commands:
 * ``heldout-eval``  — score a held-out split once, eval-dataloader cache disabled
 * ``model-params``  — parameter count of the reported classifier, two ways
 * ``enrichment-clustered`` — attribution enrichment re-tested with the read as unit
+* ``seed-summary``  — aggregate the seed replicates into the stability table
 
 Every command seeds all RNGs (:func:`trap.utils.seeding.set_global_seed`) and
 writes a ``manifest.json`` (git commit, seed, input SHA-256, parameters) next to
@@ -622,6 +623,92 @@ def enrichment_clustered_cmd(
             }
         },
         outputs=[f"clustered_enrichment.{domain}.csv", f"clustered_reads.{domain}.csv"],
+    )
+
+
+@app.command(name="seed-summary")
+def seed_summary_cmd(
+    seeds_dir: Path = typer.Option(
+        Path("results/seeds"), help="Directory of per-replicate heldout-eval outputs"
+    ),
+    reference: Path = typer.Option(
+        Path("results/heldout_seqlabel/heldout_summary.eval.json"),
+        help="Held-out summary of the model of record (seed 3469)",
+    ),
+    out: Path = typer.Option(Path("results/seeds")),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Aggregate the seed replicates into the stability table (R3, Comment 5).
+
+    Reads each replicate's ``heldout_summary.eval.*.json`` and reports mean, sd
+    and range per metric, with the run of record shown alongside so the reader
+    can see whether it is typical of the ensemble rather than a lucky draw.
+    """
+    import json as _json
+
+    set_verbosity(verbosity)
+    logger.log("STAGE", f"[seed-summary] {seeds_dir} -> {out}")
+
+    rows = []
+    for summary_path in sorted(seeds_dir.glob("*/heldout_summary.eval*.json")):
+        payload = _json.loads(summary_path.read_text())
+        name = summary_path.parent.name
+        rows.append(
+            {
+                "model": name,
+                "seed": int(name.rsplit("seed", 1)[-1]) if "seed" in name else -1,
+                **{k: v for k, v in payload.items() if isinstance(v, (int, float))},
+            }
+        )
+    if not rows:
+        raise typer.BadParameter(
+            f"no replicate summaries under {seeds_dir}/*/heldout_summary.eval*.json; "
+            "run stage 43 first"
+        )
+    frame = pd.DataFrame(rows).sort_values("seed")
+
+    metrics = [
+        m
+        for m in ("accuracy", "f1", "precision", "recall", "f1_L1HS", "f1_L1PA", "f1_NEGATIVE")
+        if m in frame.columns
+    ]
+    ref = {}
+    if reference.exists():
+        ref = _json.loads(reference.read_text())
+
+    stats = pd.DataFrame(
+        [
+            {
+                "metric": m,
+                "n_replicates": int(frame[m].notna().sum()),
+                "mean": float(frame[m].mean()),
+                "sd": float(frame[m].std(ddof=1)) if frame[m].notna().sum() > 1 else float("nan"),
+                "min": float(frame[m].min()),
+                "max": float(frame[m].max()),
+                "run_of_record": float(ref[m]) if m in ref else float("nan"),
+            }
+            for m in metrics
+        ]
+    )
+    _write_table(frame.to_dict("records"), out, "seed_replicates", [])
+    _write_table(stats.to_dict("records"), out, "seed_stability", [])
+    for _, r in stats.iterrows():
+        logger.info(
+            f"  {r['metric']:<12} {r['mean']:.4f} +/- {r['sd']:.4f} "
+            f"[{r['min']:.4f}, {r['max']:.4f}]  record={r['run_of_record']:.4f}"
+        )
+    logger.success(f"[seed-summary] {len(frame)} replicates -> {out}/seed_stability.csv")
+    manifest.write(
+        out,
+        filename="manifest.seed_summary.json",
+        command="seed-summary",
+        params={
+            "n_replicates": int(len(frame)),
+            "seeds": [int(x) for x in frame["seed"].tolist()],
+            "reference": str(reference),
+        },
+        inputs={"seeds_dir": {"path": str(seeds_dir)}},
+        outputs=["seed_replicates.csv", "seed_stability.csv"],
     )
 
 
