@@ -19,17 +19,25 @@
 # eval_results.json carries the per-epoch split (the stage-40 cache defect), and
 # reading it as a held-out number would repeat the original error.
 #
-#   sbatch --array=0-14%3 scripts/slurm/43_seed_heldout.slurm
+#   sbatch --array=0-6%3 scripts/slurm/43_seed_heldout.slurm
 #
 # Run only after stage 42 finishes, or chain it:
-#   sbatch --dependency=afterok:<42_jobid> --array=0-14%3 scripts/slurm/43_seed_heldout.slurm
+#   sbatch --dependency=afterok:<42_jobid> --array=0-6%3 scripts/slurm/43_seed_heldout.slurm
 
 source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"
 load_gpu_modules
 activate_trap
 cd "${REPO_ROOT}"
 
-SEED=$(( 3470 + ${SLURM_ARRAY_TASK_ID:-0} ))
+# Seed list is read from a shared file so stages 42 and 43 cannot disagree about
+# which model names exist. Scattered 32-bit seeds, not consecutive ones.
+SEED_FILE="${SEED_FILE:-${REPO_ROOT}/config/training/seed_replicates.txt}"
+SEED=$(grep -v '^#' "${SEED_FILE}" | sed -n "$(( ${SLURM_ARRAY_TASK_ID:-0} + 1 ))p" | tr -d '[:space:]')
+if [[ -z "${SEED}" ]]; then
+    echo "[ERROR] no seed at index ${SLURM_ARRAY_TASK_ID:-0} in ${SEED_FILE}" >&2
+    echo "        the file holds $(grep -cv '^#' "${SEED_FILE}") seeds; array range must match." >&2
+    exit 1
+fi
 MODEL="albert.l1hs_l1pa2.v48.k17.salmon.seqlabel.seed${SEED}"
 OUT="${REPO_ROOT}/results/seeds/${MODEL}"
 

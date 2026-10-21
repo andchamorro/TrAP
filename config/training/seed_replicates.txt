@@ -1,0 +1,29 @@
+# Seed replicates for the Reviewer 3, Comment 5 stability analysis.
+#
+# The run of record uses seed 3469 (config/training/classification_final.json).
+# The seven below are additional, giving EIGHT training runs in total.
+#
+# They are deliberately scattered across the 32-bit range rather than
+# consecutive: consecutive seeds are a weaker probe of initialisation and
+# shuffling variance, and a reviewer can reasonably ask why 3470-3476 were
+# chosen. Reproducible derivation (numpy 2.x):
+#
+#   rng = np.random.default_rng(20261020)
+#   seeds = []
+#   while len(seeds) < 7:
+#       v = int(rng.integers(1, 2**31 - 1))
+#       if v != 3469 and all(abs(v - s) > 10**6 for s in seeds):
+#           seeds.append(v)
+#
+# THIS FILE IS THE SINGLE SOURCE OF TRUTH for stages 42 and 43. Both read it by
+# array-task index, so the trained model names and the names stage 43 looks for
+# cannot drift apart. Do not reorder or renumber lines once a run has started.
+#
+# One seed per line; array task index N selects the Nth non-comment line.
+1828801757
+1868046628
+239153619
+287726902
+981756399
+1847760273
+1561637697

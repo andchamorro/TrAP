@@ -19,9 +19,9 @@
 # "whether results are stable across random seeds or multiple training runs").
 #
 # Submit in batches of 3 concurrent tasks (GPUs are scarce; %3 throttles the
-# array rather than queueing 15 two-GPU jobs at once):
+# array rather than queueing all seven two-GPU jobs at once):
 #
-#   sbatch --array=0-14%3 scripts/slurm/42_seed_replicates.slurm
+#   sbatch --array=0-6%3 scripts/slurm/42_seed_replicates.slurm
 #
 # Do NOT pass RUN_CONFIG. `scripts/slurm/hpc_config.py --run-vars` emits
 # `export MODEL_CLS=...` UNCONDITIONALLY, so a run config silently overrides the
@@ -33,7 +33,7 @@
 # retention is cut twice over: the per-seed config drops save_total_limit from 5
 # to 1, and the checkpoints are deleted once `final/` exists. Only `final/`
 # (63 MB) is needed to score the held-out split. 999 MB/run -> ~63 MB/run, so the
-# 15 replicates cost ~1 GB rather than ~15 GB. save_total_limit cannot go to
+# 7 replicates cost ~0.5 GB rather than ~7 GB. save_total_limit cannot go to
 # save_strategy="no": load_best_model_at_end=true needs checkpoints to restore
 # from, and dropping it would change which model each seed selects and make the
 # replicates incomparable to the run of record. Set KEEP_CHECKPOINTS=1 to retain.
@@ -41,12 +41,12 @@
 # NAMING CONVENTION. Replicates extend the existing dotted scheme with a
 # `.seed<N>` suffix, alongside the established `.distilled` / `.e12` variants:
 #
-#   albert.l1hs_l1pa2.v48.k17.salmon.seqlabel          <- model of record, NEVER written here
-#   albert.l1hs_l1pa2.v48.k17.salmon.seqlabel.seed3470 <- replicate, array index 0
-#   ...                                          .seed3484 <- replicate, array index 14
+#   albert.l1hs_l1pa2.v48.k17.salmon.seqlabel                <- model of record, NEVER written here
+#   albert.l1hs_l1pa2.v48.k17.salmon.seqlabel.seed1828801757  <- replicate, array index 0
+#   ...                                              .seed1561637697  <- replicate, array index 6
 #
-# Seeds are 3470 + array index, chosen to be contiguous, documented and distinct
-# from the 3469 of the run of record. ~1 GB per replicate (final + 5 checkpoints).
+# SEVEN replicates plus the run of record (seed 3469) = eight runs. Seeds come
+# from config/training/seed_replicates.txt, which documents how they were drawn.
 #
 # NOTE for whoever reads the outputs: this config sets
 # dataloader_persistent_workers=true, which is the setting behind the stage-40
@@ -61,7 +61,15 @@ activate_trap
 PROTECTED_MODEL="albert.l1hs_l1pa2.v48.k17.salmon.seqlabel"
 EXPECTED_DATASET="gencode.v48.k17.salmon.seqlabel/l1hs_l1pa2"
 
-SEED=$(( 3470 + ${SLURM_ARRAY_TASK_ID:-0} ))
+# Seed list is read from a shared file so stages 42 and 43 cannot disagree about
+# which model names exist. Scattered 32-bit seeds, not consecutive ones.
+SEED_FILE="${SEED_FILE:-${REPO_ROOT}/config/training/seed_replicates.txt}"
+SEED=$(grep -v '^#' "${SEED_FILE}" | sed -n "$(( ${SLURM_ARRAY_TASK_ID:-0} + 1 ))p" | tr -d '[:space:]')
+if [[ -z "${SEED}" ]]; then
+    echo "[ERROR] no seed at index ${SLURM_ARRAY_TASK_ID:-0} in ${SEED_FILE}" >&2
+    echo "        the file holds $(grep -cv '^#' "${SEED_FILE}") seeds; array range must match." >&2
+    exit 1
+fi
 MODEL_CLS="${PROTECTED_MODEL}.seed${SEED}"      # set AFTER sourcing, so nothing overrides it
 export MODEL_CLS
 
