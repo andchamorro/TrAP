@@ -302,3 +302,150 @@ def verify_against_published(
     else:
         logger.error(f"{int((~report['matches']).sum())} domain rows do not reproduce")
     return report
+
+
+# --------------------------------------------------------------------------- #
+# Read-clustered re-analysis (Reviewer 3, Comment 9)                           #
+# --------------------------------------------------------------------------- #
+
+
+def _odds_ratio_and_enrichment(frame: pd.DataFrame, domain: str):
+    """2x2 odds ratio and proportion-scale enrichment for *domain* vs the rest."""
+    in_domain = frame["domain"].values == domain
+    top = frame["is_top"].values
+    a = int(np.count_nonzero(in_domain & top))
+    b = int(np.count_nonzero(in_domain & ~top))
+    c = int(np.count_nonzero(~in_domain & top))
+    d = int(np.count_nonzero(~in_domain & ~top))
+    if min(a, b, c, d) == 0:
+        return float("nan"), float("nan")
+    odds_ratio = (a * d) / (b * c)
+    enrichment_ = (a / (a + c)) / ((a + b) / len(frame))
+    return float(odds_ratio), float(enrichment_)
+
+
+def clustered_enrichment(
+    attribution_path: Path,
+    domain: str = "ORF2_C",
+    n_boot: int = 2000,
+    seed: int = 3469,
+) -> Dict[str, pd.DataFrame]:
+    """Re-test the attribution enrichment with the *read* as the unit (R3, C9).
+
+    Reviewer 3's objection is correct as stated: the published Fisher test treats
+    overlapping stride-1 k-mers as independent, when in fact every k-mer of a read
+    is one observation of the same fragment. This recomputes the same estimand
+    three ways, none of which assumes k-mer independence:
+
+    * **cluster bootstrap** — resample whole reads with replacement, so the
+      confidence interval carries the within-read dependence rather than ignoring
+      it. This is the headline correction and gives the honest interval;
+    * **read-level test** — collapse each read to its own top-decile fraction and
+      compare reads lying wholly inside the domain against reads lying wholly
+      outside. The read is then unambiguously the unit of analysis;
+    * **within-read permutation** — among reads that straddle the domain boundary,
+      shuffle the top flags inside each read, which holds the read's composition
+      fixed and asks only where within a read the attribution falls.
+
+    The design effect (the ratio of the clustered to the naive standard error) is
+    reported so the inflation of the published p-value is quantified rather than
+    merely acknowledged.
+
+    Returns:
+        ``{"clustered_enrichment": frame, "clustered_reads": frame}``.
+    """
+    from scipy.stats import mannwhitneyu
+
+    rng = np.random.default_rng(seed)
+    frame = load_attribution(attribution_path)
+    n_reads = int(frame["read_uid"].nunique())
+    point_or, point_enr = _odds_ratio_and_enrichment(frame, domain)
+
+    groups = {uid: sub for uid, sub in frame.groupby("read_uid")}
+    uids = np.array(list(groups))
+    boot_or = np.empty(n_boot)
+    boot_enr = np.empty(n_boot)
+    for i in range(n_boot):
+        draw = rng.choice(uids, size=len(uids), replace=True)
+        sample = pd.concat([groups[u] for u in draw], ignore_index=True)
+        boot_or[i], boot_enr[i] = _odds_ratio_and_enrichment(sample, domain)
+    or_lo, or_hi = np.nanpercentile(boot_or, [2.5, 97.5])
+    en_lo, en_hi = np.nanpercentile(boot_enr, [2.5, 97.5])
+
+    in_domain = frame["domain"].values == domain
+    top = frame["is_top"].values
+    cells = [
+        np.count_nonzero(in_domain & top),
+        np.count_nonzero(in_domain & ~top),
+        np.count_nonzero(~in_domain & top),
+        np.count_nonzero(~in_domain & ~top),
+    ]
+    se_naive = float(np.sqrt(sum(1.0 / max(1, int(x)) for x in cells)))
+    se_clustered = float(np.nanstd(np.log(boot_or)))
+    design_effect = se_clustered / se_naive
+
+    per_read = (
+        frame.assign(_in=in_domain)
+        .groupby("read_uid")
+        .agg(n_kmers=("_in", "size"), n_in=("_in", "sum"), n_top=("is_top", "sum"))
+    )
+    per_read["top_fraction"] = per_read["n_top"] / per_read["n_kmers"]
+    inside = per_read.loc[per_read["n_in"] == per_read["n_kmers"], "top_fraction"].values
+    outside = per_read.loc[per_read["n_in"] == 0, "top_fraction"].values
+    _, p_read = mannwhitneyu(inside, outside, alternative="greater")
+
+    straddling = per_read.index[(per_read["n_in"] > 0) & (per_read["n_in"] < per_read["n_kmers"])]
+    sub = frame[frame["read_uid"].isin(straddling)]
+    observed = int(np.count_nonzero((sub["domain"].values == domain) & sub["is_top"].values))
+    parts = [
+        (gg["domain"].values == domain, int(gg["is_top"].sum()))
+        for _, gg in sub.groupby("read_uid")
+    ]
+    null = np.empty(10000, dtype=int)
+    for i in range(null.size):
+        total = 0
+        for flags, k in parts:
+            if k:
+                total += int(flags[rng.choice(flags.size, size=k, replace=False)].sum())
+        null[i] = total
+    p_within = float((1 + np.count_nonzero(null >= observed)) / (1 + null.size))
+
+    summary = pd.DataFrame(
+        [
+            {
+                "domain": domain,
+                "n_kmers": int(len(frame)),
+                "n_reads": n_reads,
+                "kmers_per_read": float(len(frame) / n_reads),
+                "odds_ratio": point_or,
+                "or_ci_lo_clustered": float(or_lo),
+                "or_ci_hi_clustered": float(or_hi),
+                "enrichment": point_enr,
+                "enr_ci_lo_clustered": float(en_lo),
+                "enr_ci_hi_clustered": float(en_hi),
+                "se_log_or_naive": se_naive,
+                "se_log_or_clustered": se_clustered,
+                "design_effect": float(design_effect),
+                "effective_n_kmers": float(len(frame) / design_effect**2),
+                "n_reads_inside": int(inside.size),
+                "n_reads_outside": int(outside.size),
+                "mean_top_fraction_inside": float(inside.mean()),
+                "mean_top_fraction_outside": float(outside.mean()),
+                "read_level_ratio": float(inside.mean() / outside.mean()),
+                "p_read_level": float(p_read),
+                "n_reads_straddling": int(len(straddling)),
+                "within_read_observed": observed,
+                "within_read_null_mean": float(null.mean()),
+                "p_within_read": p_within,
+            }
+        ]
+    )
+    logger.success(
+        f"[clustered] {domain}: OR {point_or:.3f} "
+        f"(read-clustered 95% CI {or_lo:.3f}-{or_hi:.3f}); "
+        f"design effect x{design_effect:.1f}; read-level p={p_read:.4g}"
+    )
+    return {
+        "clustered_enrichment": summary,
+        "clustered_reads": per_read.reset_index(),
+    }

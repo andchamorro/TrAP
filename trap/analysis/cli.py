@@ -10,7 +10,11 @@ Run as ``python -m trap.analysis``.  Commands:
 * ``synthetic-strata`` — stratified statistics for the synthetic insertion benchmark
 * ``enrichment``    — domain + ORF0 enrichment of top-attribution k-mers
 * ``negative-control`` — is the NEGATIVE class a clean control? (Figure 13)
+* ``chrom-length``   — are the Figure 13 correlations carried by chromosome size?
 * ``imbalance``     — class weights, imbalance ratios, L1HS deficit propagation
+* ``heldout-eval``  — score a held-out split once, eval-dataloader cache disabled
+* ``model-params``  — parameter count of the reported classifier, two ways
+* ``enrichment-clustered`` — attribution enrichment re-tested with the read as unit
 
 Every command seeds all RNGs (:func:`trap.utils.seeding.set_global_seed`) and
 writes a ``manifest.json`` (git commit, seed, input SHA-256, parameters) next to
@@ -29,33 +33,42 @@ from loguru import logger
 import pandas as pd
 import typer
 
-import trap.config.config  # noqa: F401  (registers STAGE level + tqdm-loguru)
 from trap.analysis.ablation import ablation as run_ablation
 from trap.analysis.enrichment import (
-    enrichment as run_enrichment,
     verify_against_published,
 )
+from trap.analysis.enrichment import clustered_enrichment as run_clustered_enrichment
+from trap.analysis.enrichment import enrichment as run_enrichment
 from trap.analysis.imbalance import imbalance as run_imbalance
-from trap.analysis.negative_control import negative_control as run_negative_control
 from trap.analysis.kmer_counting import (
     _jellyfish_available,
     _seqkit_available,
-    kmer_spectrum as run_kmer_spectrum,
+)
+from trap.analysis.kmer_counting import (
     load_corpus,
 )
+from trap.analysis.kmer_counting import kmer_spectrum as run_kmer_spectrum
+from trap.analysis.negative_control import (
+    load_by_chromosome,
+    load_chrom_lengths,
+)
+from trap.analysis.negative_control import chrom_length_correlations as run_chrom_length
+from trap.analysis.negative_control import negative_control as run_negative_control
 from trap.analysis.robustness import (
     DEFAULT_N_BOOT,
     L1BASE_TRACKS,
     MIN_ELEMENT_BP,
     PRIMARY_LOCUS_SET,
-    robustness as run_robustness,
 )
+from trap.analysis.robustness import robustness as run_robustness
 from trap.analysis.selection import compute_selection
 from trap.analysis.synthetic_strata import (
     REFERENCE_METHOD,
-    synthetic_strata as run_synthetic_strata,
 )
+from trap.analysis.synthetic_strata import synthetic_strata as run_synthetic_strata
 from trap.config import manifest
+import trap.config.config  # noqa: F401  (registers STAGE level + tqdm-loguru)
+from trap.config.config import MODELS_DIR
 from trap.config.schemas import KmerSpectrumConfigSchema, load_config
 from trap.config.verbosity import set_verbosity
 from trap.utils.seeding import set_global_seed
@@ -382,7 +395,7 @@ def negative_control_cmd(
         help="Subfamily confusion table, for the leakage mechanism",
     ),
     annotation: Optional[Path] = typer.Option(
-        Path(".trap/L1EM/annotation/L1EM.400.bed"),
+        Path("L1EM/annotation/L1EM.400.bed"),
         help="LINE-1 annotation BED, for the annotation-density adjustment",
     ),
     logits: Optional[Path] = typer.Option(
@@ -422,6 +435,301 @@ def negative_control_cmd(
         params={"figure": "SRR4099955_agreggate_mlvs_bwa_by_chr"},
         inputs=inputs,
         outputs=[f"{stem}.csv" for stem in tables],
+    )
+
+
+@app.command(name="chrom-length")
+def chrom_length_cmd(
+    by_chrom: Path = typer.Option(
+        Path("results/srr4099955/aggregate_by_chr.csv"),
+        help="Per-chromosome class aggregation",
+    ),
+    chrom_sizes: Path = typer.Option(
+        Path("references/GRCh38.chrom.sizes"),
+        help="Two-column chrom.sizes or .fai giving chromosome lengths",
+    ),
+    out: Path = typer.Option(Path("results/srr4099955")),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Adjust the Figure 13 correlations for chromosome length (R2-9).
+
+    Deliberately a separate command from ``negative-control``: it needs only
+    the aggregation and the assembly, so it runs anywhere, and it writes one
+    table of its own rather than rewriting that command's five.
+    """
+    set_verbosity(verbosity)
+    logger.log("STAGE", f"[chrom-length] {by_chrom} -> {out}")
+    classifier, alignment = load_by_chromosome(by_chrom)
+    lengths = load_chrom_lengths(chrom_sizes)
+    table = run_chrom_length(classifier, alignment, lengths)
+    _write_table(table.to_dict("records"), out, "negative_control_chrom_length", [])
+    focus = table[
+        (table["classifier_class"] == "NEGATIVE") & (table["alignment_class"] == "L1PA2")
+    ].iloc[0]
+    logger.success(
+        f"NEGATIVE vs alignment L1PA2: r={focus['pearson_r']:.3f} -> "
+        f"partial r | chromosome length = {focus['partial_r_given_chrom_length']:.3f} "
+        f"(p={focus['partial_p_given_chrom_length']:.4f})"
+    )
+    diagonal = table[table["classifier_class"] == table["alignment_class"]]
+    for _, row in diagonal.iterrows():
+        logger.info(
+            f"  {row['classifier_class']} diagonal: {row['pearson_r']:+.3f} -> "
+            f"{row['partial_r_given_chrom_length']:+.3f} (delta {row['delta_r']:+.3f})"
+        )
+    manifest.write(
+        out,
+        filename="manifest.chrom_length.json",
+        command="chrom-length",
+        seed=3469,
+        params={
+            "figure": "SRR4099955_agreggate_mlvs_bwa_by_chr",
+            "assembly": "GRCh38.p14 (GCA_000001405.29)",
+        },
+        inputs={
+            "by_chrom": {"path": str(by_chrom), "sha256": manifest.sha256_file(by_chrom)},
+            "chrom_sizes": {
+                "path": str(chrom_sizes),
+                "sha256": manifest.sha256_file(chrom_sizes),
+            },
+        },
+        outputs=["negative_control_chrom_length.csv"],
+    )
+
+
+@app.command(name="heldout-eval")
+def heldout_eval_cmd(
+    model: str = typer.Option(
+        "albert.l1hs_l1pa2.v48.k17.salmon.seqlabel",
+        help="Model directory under MODELS_DIR; its final/ checkpoint is scored",
+    ),
+    preprocessing_name: str = typer.Option(
+        "gencode.v48.k17.salmon.seqlabel/l1hs_l1pa2",
+        help="Tokenized classification dataset name",
+    ),
+    split: str = typer.Option("eval", help="DatasetDict split to score (Table 1 held-out = eval)"),
+    batch_size: int = typer.Option(128, help="Per-device eval batch size"),
+    num_workers: int = typer.Option(8, help="Dataloader workers"),
+    seed: int = typer.Option(3469),
+    out: Path = typer.Option(Path("results/heldout")),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Score a held-out split once, with the eval-dataloader cache disabled.
+
+    Trains nothing. See ``trap.analysis.heldout_eval`` for why the split named
+    ``eval`` was never actually scored by the training run of record.
+    """
+    import numpy as np
+
+    from trap.analysis.heldout_eval import _load_split, _metric_frames, _predict_logits
+
+    set_verbosity(verbosity)
+    set_global_seed(seed)
+    model_path = MODELS_DIR / model / "final"
+    logger.log("STAGE", f"[heldout-eval] {model_path} x {preprocessing_name}:{split} -> {out}")
+
+    dataset, id2label = _load_split(preprocessing_name, split)
+    labels = np.asarray(dataset["label"])
+    logits, precision = _predict_logits(model_path, dataset, batch_size, num_workers)
+
+    per_class, confusion, summary = _metric_frames(logits, labels, id2label)
+    _write_table(per_class.to_dict("records"), out, f"heldout_per_class.{split}", [])
+    _write_table(confusion.to_dict("records"), out, f"heldout_confusion.{split}", [])
+    out.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(out / f"heldout_logits.{split}.npz", logits=logits, labels=labels)
+    (out / f"heldout_summary.{split}.json").write_text(
+        json.dumps({**summary, "compute_precision": precision}, indent=2, default=float)
+    )
+
+    logger.success(
+        f"[heldout-eval] n={len(labels):,} macro-F1={summary['f1']:.4f} "
+        f"accuracy={summary['accuracy']:.4f}"
+    )
+    manifest.write(
+        out,
+        filename=f"manifest.heldout_eval.{split}.json",
+        command="heldout-eval",
+        seed=seed,
+        params={
+            "model": model,
+            "split": split,
+            "batch_size": batch_size,
+            "n_rows": len(labels),
+            "precision": precision,
+        },
+        inputs={
+            "model": {
+                "path": str(model_path),
+                "sha256": manifest.sha256_file(model_path / "model.safetensors"),
+            },
+            "dataset": {"path": f"{preprocessing_name}/classification/tokenized/{split}"},
+        },
+        outputs=[
+            f"heldout_per_class.{split}.csv",
+            f"heldout_confusion.{split}.csv",
+            f"heldout_logits.{split}.npz",
+            f"heldout_summary.{split}.json",
+        ],
+    )
+
+
+@app.command(name="enrichment-clustered")
+def enrichment_clustered_cmd(
+    attribution: Path = typer.Option(
+        Path("results/interpret/per_kmer_attribution.csv"),
+        help="Per-k-mer attribution table; must carry read_uid",
+    ),
+    domain: str = typer.Option("ORF2_C", help="Region to re-test against the rest"),
+    n_boot: int = typer.Option(2000, help="Cluster-bootstrap resamples over reads"),
+    seed: int = typer.Option(3469),
+    out: Path = typer.Option(Path("results/interpret")),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Re-test the attribution enrichment with the read as the unit (R3, C9).
+
+    The published Fisher interval assumes independent k-mers; this replaces it
+    with a read-clustered one and reports the design effect, so the inflation is
+    quantified rather than merely conceded.
+    """
+    set_verbosity(verbosity)
+    set_global_seed(seed)
+    logger.log("STAGE", f"[enrichment-clustered] {attribution} -> {out}")
+    tables = run_clustered_enrichment(attribution, domain=domain, n_boot=n_boot, seed=seed)
+    for name, frame in tables.items():
+        _write_table(frame.to_dict("records"), out, f"{name}.{domain}", [])
+    row = tables["clustered_enrichment"].iloc[0]
+    manifest.write(
+        out,
+        filename=f"manifest.enrichment_clustered.{domain}.json",
+        command="enrichment-clustered",
+        seed=seed,
+        params={
+            "domain": domain,
+            "n_boot": n_boot,
+            "n_reads": int(row["n_reads"]),
+            "n_kmers": int(row["n_kmers"]),
+            "odds_ratio": float(row["odds_ratio"]),
+            "or_ci_clustered": [
+                float(row["or_ci_lo_clustered"]),
+                float(row["or_ci_hi_clustered"]),
+            ],
+            "design_effect": float(row["design_effect"]),
+        },
+        inputs={
+            "attribution": {
+                "path": str(attribution),
+                "sha256": manifest.sha256_file(attribution),
+            }
+        },
+        outputs=[f"clustered_enrichment.{domain}.csv", f"clustered_reads.{domain}.csv"],
+    )
+
+
+@app.command(name="model-params")
+def model_params_cmd(
+    model: str = typer.Option(
+        "albert.l1hs_l1pa2.v48.k17.salmon.seqlabel",
+        help="Model directory under MODELS_DIR; its final/ checkpoint is counted",
+    ),
+    out: Path = typer.Option(Path("results/model_params")),
+    verbosity: str = typer.Option("normal"),
+) -> None:
+    """Count the reported classifier's parameters, with a manifest (R3, Minor).
+
+    The Methods quote a parameter count, so it must come from the checkpoint of
+    record rather than from a hand tally of the config. Two independent counts are
+    taken and required to agree: ``num_parameters()`` on the instantiated model,
+    and the summed element count of every tensor in ``model.safetensors`` read
+    straight from the safetensors header. They can legitimately differ when a
+    checkpoint ties weights, so the command fails rather than silently reporting
+    one of them.
+    """
+    import json as _json
+
+    from safetensors import safe_open
+    from transformers import AlbertForSequenceClassification
+
+    set_verbosity(verbosity)
+    model_path = MODELS_DIR / model / "final"
+    logger.log("STAGE", f"[model-params] {model_path} -> {out}")
+
+    net = AlbertForSequenceClassification.from_pretrained(str(model_path))
+    live = net.num_parameters()
+
+    weights = model_path / "model.safetensors"
+    per_tensor = {}
+    with safe_open(str(weights), framework="numpy") as fh:
+        for key in fh.keys():
+            shape = tuple(fh.get_slice(key).get_shape())
+            n = 1
+            for dim in shape:
+                n *= dim
+            per_tensor[key] = {"shape": list(shape), "n_parameters": n}
+    checkpoint = sum(v["n_parameters"] for v in per_tensor.values())
+
+    if live != checkpoint:
+        raise typer.BadParameter(
+            f"parameter counts disagree: num_parameters()={live:,} but the "
+            f"checkpoint holds {checkpoint:,} elements across {len(per_tensor)} "
+            "tensors. One of them is not what the Methods should quote; resolve "
+            "before using either (tied weights are the usual cause)."
+        )
+
+    embedding = net.albert.embeddings.word_embeddings.weight.numel()
+    cfg = net.config
+    summary = {
+        "n_parameters": live,
+        "n_tensors": len(per_tensor),
+        "word_embedding_parameters": embedding,
+        "word_embedding_fraction": embedding / live,
+        "classifier_head_parameters": sum(p.numel() for p in net.classifier.parameters()),
+        "vocab_size": cfg.vocab_size,
+        "embedding_size": cfg.embedding_size,
+        "hidden_size": cfg.hidden_size,
+        "num_hidden_layers": cfg.num_hidden_layers,
+        "num_hidden_groups": cfg.num_hidden_groups,
+        "num_attention_heads": cfg.num_attention_heads,
+        "intermediate_size": cfg.intermediate_size,
+        "max_position_embeddings": cfg.max_position_embeddings,
+        "num_labels": cfg.num_labels,
+        "id2label": {int(k): v for k, v in cfg.id2label.items()},
+    }
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "model_params.json").write_text(_json.dumps(summary, indent=2))
+    _write_table(
+        [{"tensor": k, **v} for k, v in sorted(per_tensor.items())],
+        out,
+        "model_params_by_tensor",
+        [],
+    )
+
+    logger.success(
+        f"[model-params] {live:,} parameters in {len(per_tensor)} tensors "
+        f"(both counts agree); word embeddings are {embedding:,} "
+        f"({100 * embedding / live:.1f}%)"
+    )
+    logger.info(
+        f"  ALBERT shares one layer group across {cfg.num_hidden_layers} layers "
+        f"(num_hidden_groups={cfg.num_hidden_groups}), which is why the encoder is "
+        "far smaller than the layer count suggests."
+    )
+    manifest.write(
+        out,
+        filename="manifest.model_params.json",
+        command="model-params",
+        params={
+            "model": model,
+            "n_parameters": live,
+            "counts_agree": True,
+        },
+        inputs={
+            "model": {"path": str(model_path), "sha256": manifest.sha256_file(weights)},
+            "config": {
+                "path": str(model_path / "config.json"),
+                "sha256": manifest.sha256_file(model_path / "config.json"),
+            },
+        },
+        outputs=["model_params.json", "model_params_by_tensor.csv"],
     )
 
 
