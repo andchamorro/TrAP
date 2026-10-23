@@ -685,7 +685,13 @@ def seed_summary_cmd(
                 "sd": float(frame[m].std(ddof=1)) if frame[m].notna().sum() > 1 else float("nan"),
                 "min": float(frame[m].min()),
                 "max": float(frame[m].max()),
-                "run_of_record": float(ref[m]) if m in ref else float("nan"),
+                # The model of record was scored before run_heldout.py stopped
+                # writing the precision *label* ("bf16") over the macro-precision
+                # *metric*, so its summary carries a string under that key. Its
+                # real macro precision is in heldout_per_class.eval.csv.
+                "run_of_record": (
+                    float(ref[m]) if isinstance(ref.get(m), (int, float)) else float("nan")
+                ),
             }
             for m in metrics
         ]
