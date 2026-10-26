@@ -15,7 +15,7 @@
 # End-to-end validation — ONE synthetic chr1 sample through the seqlabel classifier
 # FILTER → salmon (the "AlbertSalmon" path with the option-B model). Reuses TrAP's
 # inference: predict.processing_dataset → predict.quantify → postprocessing.filter_ids
-# → seqkit extract → salmon quant. Plan: .trap/plans/synthetic-e2e-validation.md.
+# → seqkit extract → salmon quant.
 #
 # Single sample first (verify quant.sf parses), then fan out over POWER 5..13 ×
 # DELPROB {0.000,0.025,0.050,0.075,0.100}.  Does NOT touch L1EM / plain-salmon results.

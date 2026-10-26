@@ -174,7 +174,7 @@ synthetic_benchmark:
       script: scripts/sh/run_l1em.sh
       command: bash $L1EM_PATH/run_L1EM.sh $BAM $L1EM_PATH $GENOME_FA $L1EM_BED $OUTDIR
       annotation: data/ref/l1base/hsflil1_8438.l1em.bed
-      parameters_file: .trap/L1EM/parameters.sh
+      parameters_file: L1EM/parameters.sh
       key_parameters:
         threads: 16
         realignNM: 3
@@ -198,8 +198,8 @@ synthetic_benchmark:
         manuscript already reports.
       version: v1.0.0-4-ga50a237
       version_source: >-
-        upstream L1EM repository vendored unmodified in .trap/L1EM at commit
-        a50a237 (2026-01-19), four commits after tag v1.0.0. L1EM runs in its own
+        upstream L1EM used unmodified at commit a50a237, four commits after tag
+        v1.0.0. L1EM runs in its own
         environment (L1EM.yml: bwa 0.7.17, samtools 1.9, bedtools 2.27.1), which
         is independent of the versions under `modules` above.
 

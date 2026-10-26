@@ -330,7 +330,7 @@ def load_locus_table(
     """Load the tidy 5'RACE comparison table and pivot it to one row per locus.
 
     The tidy table (``results/srr_experiment/l1em_salmon_fpm.csv``, written by
-    ``.trap/scripts/aggregate_srr_l1em_exp.py``) carries one row per locus x
+    ``scripts/aggregate_srr_l1em_exp.py``) carries one row per locus x
     method with a single ``value`` column that pools TPM and RPM; the wide form
     keeps one column per method so every locus set is applied identically.
 

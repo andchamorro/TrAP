@@ -30,7 +30,7 @@ _SUBMIT = PROJ_ROOT / "scripts" / "slurm" / "submit_pipeline.sh"
 _SUBMIT_TUNING = PROJ_ROOT / "scripts" / "slurm" / "submit_tuning.sh"
 
 # Track A: MLM pre-training is dropped (the hashed k-mer vocab makes the MLM
-# objective unlearnable; see .trap/plans/mlm-pretraining-freeze-action-plan.md).
+# objective unlearnable.
 # The shelved MLM stages live in scripts/slurm/legacy/mlm/.
 STAGES: List[Tuple[str, str]] = [
     (

@@ -2,7 +2,7 @@
 
 The coordinate labels (`pairtobed -type either` over transcriptome reads) tag a
 read "L1" by genomic overlap, not L1 sequence — ~95% of "L1" reads carry no L1
-sequence (see `.trap/plans/l1-sequence-anchored-labels.md` §0). This redefines the
+sequence. This redefines the
 positive class by alignment to the L1 subfamily consensus library:
 
   read is L1 ⇔ best minimap2 alignment has identity ≥ id_thr over ≥ cov_thr of the

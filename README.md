@@ -253,8 +253,7 @@ bash scripts/slurm/submit_generate_synthetic.sh      # → data/ref/...chr1.with
 
 The grid is insertion level 2⁵–2¹³ × deletion probability {0–0.1} (45 samples), inserts are
 **deterministic** (fixed `--seed`, so the dataset is reproducible). Then run the classifier
-**filter → salmon** path per sample and compute the comparison (see
-**[`.trap/plans/synthetic-e2e-validation.md`](.trap/plans/synthetic-e2e-validation.md)**):
+**filter → salmon** path per sample and compute the comparison:
 
 ```bash
 # one sample:

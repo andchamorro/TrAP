@@ -1,14 +1,8 @@
 # TrAP training reproduction pipeline — Grace HPRC
 
-Phase-3 of `.trap/plans/perf-and-reproducibility-plan.md` (§6): a config-driven,
-manifest-stamped pipeline for the clean **k=17 / GENCODE v48** re-do, orchestrated
-as an `sbatch --dependency=afterok` chain on the TAMU **Grace** cluster (Cascade
-Lake; GPU stages default to **2× A100 40 GB**).
-
 > **Track A (no MLM pre-training).** The MLM pre-training phase is dropped: the
 > Salmon canonical k-mer vocabulary is feature-hashed, which makes the masked-LM
-> objective unlearnable (loss freezes at `H(unigram) ≈ ln(vocab)`; full diagnosis
-> in `.trap/plans/mlm-pretraining-freeze-action-plan.md`). The classifier is
+> objective unlearnable (loss freezes at `H(unigram) ≈ ln(vocab)`). The classifier is
 > fine-tuned **from random init**. The shelved MLM stages (`24_mlm_smoke`,
 > `25_tune_mlm`, `30_mlm_pretrain`) live in `scripts/slurm/legacy/mlm/`.
 
@@ -85,8 +79,7 @@ into 65 536 buckets with a non-invertible avalanche hash, so predicting a masked
 bucket from its neighbours is not a representable function and the MLE-optimal
 predictor is the marginal token distribution (loss = `H(unigram) ≈ ln(vocab)`).
 Higher learning rates, fp32, and a fixed-mask memorisation run all stalled
-identically. Full diagnosis:
-`.trap/plans/mlm-pretraining-freeze-action-plan.md`.
+identically.
 
 That is why MLM pre-training is dropped (Track A) and the original MLM smoke gate
 (`24_mlm_smoke`) is shelved in `legacy/mlm/` — note it has its own baseline bug

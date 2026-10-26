@@ -1,7 +1,5 @@
 #!/usr/bin/env Rscript
 # TrAP workflow overview — the two-track (build / apply) pipeline diagram.
-# Renders §3.1 of .trap/summaries/refactor-update_core_improve_repro.md as a figure.
-# Structure adapted from Sertorius/proposal/desk/fig/workflow_overview.R.
 #
 # Dependencies: ggplot2 + grid only (both already in the conda env; grid is base R).
 # Rounded boxes use grid::roundrectGrob so no ggforce is required — ggforce's compiled deps

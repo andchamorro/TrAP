@@ -8,8 +8,6 @@ per-locus abundance is regressed (R²) against the known truth. It is an
 evaluated on genomic-insertion reads — so it probes generalization beyond the
 in-distribution read-level metrics.
 
-See the full plan in `.trap/plans/synthetic-e2e-validation.md`.
-
 ## 0. Directory naming (by experiment type)
 
 The reference trees are named by **experiment type** (derived from `SIM_MODEL`), grouped
@@ -104,8 +102,7 @@ Per the manuscript figure convention, a Python step emits
 
 ## 4. Reproduction from the archived source run (option A, 2026-07-04)
 
-`synthetic_salmon_l1em_teht_some` was reproduced **from the archived source-run artifacts**
-(fetched with `.trap/scripts/fetch_collect_synthetic_host_insert.sh`), so **no new
+`synthetic_salmon_l1em_teht_some` was reproduced **from the archived source-run artifacts**, so **no new
 experiment was needed**. The archived tree lays methods out as `salmon/art/` (plain →
 Salmon) and `salmon/filtered/` (classifier-filtered → AlbertSalmon), with TEtranscripts
 `*.cntTable` lacking the `GRCh38.p14.` prefix; the collector now resolves these via subdir
