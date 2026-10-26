@@ -2,7 +2,7 @@
   "title": "TrAP: A Transformers Analysis Pipeline to Evaluate LINE-1 RNA Sequence Content",
   "description": "<p>TrAP treats DNA as language to detect and quantify LINE-1 (L1) retroelements in short- and long-read RNA-seq data. Reads are split into k-mers, tokenized via a deterministic canonical k-mer hash, and classified read by read as L1HS, L1PA or NEGATIVE by a custom ALBERT transformer trained directly on the supervised classification task. The read-level classifier feeds two abundance estimators (ALBERT with Salmon and ALBERT with expectation-maximization), which quantify LINE-1 elements defined by RepeatMasker annotations on GRCh38.p14.</p><p>The pipeline is benchmarked against Salmon, L1EM, HTSeq and TEtranscripts on a synthetic chromosome 1 insertion series with controlled insertion load, deletion probability and mutation rate, and against HEK293 short-read RNA-seq with 5' rapid amplification of cDNA ends (5'RACE) long-read sequencing as an orthogonal locus-level reference.</p><p>Companion software archive for the manuscript \"A Transformers Analysis Pipeline (TrAP) to Evaluate LINE-1 RNA Sequence Content\" (Chamorro-Parejo and Ramos).</p>",
   "upload_type": "software",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "license": "apache-2.0",
   "creators": [
     {
