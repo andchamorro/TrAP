@@ -222,3 +222,6 @@ CLAUDE.md
 .cursorrules
 .cursor/
 skills-lock.json
+
+# Default R graphics-device output, written when a script plots without a device
+Rplots.pdf
