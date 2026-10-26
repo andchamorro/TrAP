@@ -22,6 +22,14 @@ expected to exonerate the NEGATIVE class and do not:
    correlate with LINE-1 abundance, so the reviewer's reading is correct and the
    correlation needs no exotic explanation.
 
+A fourth covariate, chromosome length, is computed by
+:func:`chrom_length_correlations` under its own command and written to its own
+table.  It is the covariate that shrinks the NEGATIVE/L1PA2 association most
+(0.736 to 0.408), and it is kept out of the headline for the reason given in
+that function's docstring: longer chromosomes really do carry more LINE-1, so
+the adjustment removes signal along with nuisance.  The L1HS diagonal, which is
+what the manuscript's claim rests on, is untouched by it.
+
 A note on what is deliberately **not** used as the headline.
 :func:`composition_correlations` renormalises each class by its chromosome
 total, which does drive the NEGATIVE/L1PA2 correlation to ~0 — but it drives
@@ -129,6 +137,32 @@ def load_annotation_density(
     return counts
 
 
+def load_chrom_lengths(sizes_path: Path) -> pd.Series:
+    """Chromosome lengths from a two-column ``chrom.sizes`` / ``.fai`` file.
+
+    Kept in a file rather than a literal so the value the table was computed
+    from is hashed into the manifest alongside every other input.
+
+    Args:
+        sizes_path: Tab-separated ``name<TAB>length``; ``#`` comments and any
+            further columns (as in a ``.fai``) are ignored.
+
+    Returns:
+        Length in base pairs, indexed by chromosome.
+    """
+    sizes = pd.read_csv(
+        sizes_path,
+        sep="\t",
+        comment="#",
+        header=None,
+        usecols=[0, 1],
+        names=["chrom", "length"],
+    )
+    lengths = sizes.set_index("chrom")["length"].astype(float)
+    logger.info(f"chromosome lengths from {sizes_path.name}: {len(lengths)} sequences")
+    return lengths
+
+
 def _partial(x: np.ndarray, y: np.ndarray, control: np.ndarray) -> Tuple[float, float]:
     """Pearson correlation of *x* and *y* after regressing both on *control*."""
     design = np.column_stack([np.ones_like(control), control])
@@ -198,6 +232,68 @@ def adjusted_correlations(
                 row["partial_p_given_annotated_l1"] = ann_p
                 row["composition_explains"] = bool(abs(ann_r) < 0.3 * abs(pearson.statistic))
             rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def chrom_length_correlations(
+    classifier: pd.DataFrame,
+    alignment: pd.DataFrame,
+    lengths: pd.Series,
+    classes: Sequence[str] = CLASSES,
+) -> pd.DataFrame:
+    """Figure 13's correlations before and after adjusting for chromosome size.
+
+    A third covariate, kept separate from :func:`adjusted_correlations` because
+    it answers a different question and is weaker evidence than either of the
+    two used there.  Chromosome length is not a clean confounder: longer
+    chromosomes genuinely carry more LINE-1, so partialling it out removes part
+    of the signal under study along with the nuisance.  It is reported because
+    it is the covariate that moves the NEGATIVE/L1PA2 association furthest, and
+    a reader is entitled to see that number rather than have it withheld.
+
+    The ``scales_with_length`` columns are what make the table readable: a cell
+    only moves when at least one of its two axes is itself length-dependent.
+
+    Args:
+        classifier: Classifier frame from :func:`load_by_chromosome`.
+        alignment: Alignment frame from :func:`load_by_chromosome`.
+        lengths: Chromosome lengths from :func:`load_chrom_lengths`.
+        classes: Classes to cross.
+
+    Returns:
+        One row per (classifier class, alignment class), carrying the raw
+        Pearson coefficient, the length-adjusted partial, their difference, and
+        each axis's own correlation with length.
+    """
+    missing = sorted(set(classifier.index) - set(lengths.index))
+    if missing:
+        raise ValueError(f"no chromosome length for: {missing}")
+    length = lengths.reindex(classifier.index).to_numpy(dtype=float)
+    own_vs_length = {c: pearsonr(classifier[c].to_numpy(dtype=float), length) for c in classes}
+    other_vs_length = {c: pearsonr(alignment[c].to_numpy(dtype=float), length) for c in classes}
+    rows = []
+    for own in classes:
+        x = classifier[own].to_numpy(dtype=float)
+        for other in classes:
+            y = alignment[other].to_numpy(dtype=float)
+            pearson = pearsonr(x, y)
+            partial_r, partial_p = _partial(x, y, length)
+            rows.append(
+                {
+                    "classifier_class": own,
+                    "alignment_class": other,
+                    "n_chrom": len(x),
+                    "pearson_r": float(pearson.statistic),
+                    "pearson_p": float(pearson.pvalue),
+                    "partial_r_given_chrom_length": partial_r,
+                    "partial_p_given_chrom_length": partial_p,
+                    "delta_r": partial_r - float(pearson.statistic),
+                    "classifier_r_vs_length": float(own_vs_length[own].statistic),
+                    "classifier_p_vs_length": float(own_vs_length[own].pvalue),
+                    "alignment_r_vs_length": float(other_vs_length[other].statistic),
+                    "alignment_p_vs_length": float(other_vs_length[other].pvalue),
+                }
+            )
     return pd.DataFrame(rows)
 
 

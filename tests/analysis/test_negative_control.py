@@ -16,11 +16,13 @@ from trap.analysis.negative_control import (
     CLASSES,
     MLVS_BWA_FIGURE,
     adjusted_correlations,
+    chrom_length_correlations,
     composition_correlations,
     jackknife_correlations,
     leakage_rates,
     load_annotation_density,
     load_by_chromosome,
+    load_chrom_lengths,
     negative_control,
     operating_point_leakage,
 )
@@ -315,3 +317,109 @@ def test_negative_control_skips_optional_inputs(leaky):
     tables = negative_control(path)
     assert "negative_control_leakage" not in tables
     assert "negative_control_correlations" in tables
+
+
+# ── Chromosome length ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def chrom_sizes(tmp_path):
+    """A chrom.sizes carrying a comment header and a descending length gradient."""
+    path = tmp_path / "test.chrom.sizes"
+    lines = ["# a comment, as the real reference file has"]
+    for position, chrom in enumerate(_CHROMS):
+        lines.append(f"{chrom}\t{250_000_000 - 8_000_000 * position}")
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def _length_split_frames(lengths: pd.Series, seed: int = 3469):
+    """One pairing driven only by length, one carrying no length dependence.
+
+    NEGATIVE on both axes is a multiple of chromosome length plus independent
+    noise, so their correlation is entirely mediated by length and must collapse
+    under adjustment.  L1HS is built flat in length but shared between the axes,
+    so its correlation has nothing for the adjustment to take away.  Those are
+    the two outcomes the adjustment has to tell apart.
+    """
+    rng = np.random.default_rng(seed)
+    n = len(lengths)
+    gb = lengths.to_numpy(dtype=float) / 1e9
+    shared = rng.uniform(200, 600, n)
+    alignment = pd.DataFrame(
+        {
+            "L1HS": shared + rng.normal(0, 5, n),
+            "L1PA2": rng.uniform(800, 1200, n),
+            "NEGATIVE": 500 * gb + rng.normal(0, 3, n),
+        },
+        index=lengths.index,
+    )
+    classifier = pd.DataFrame(
+        {
+            "L1HS": 0.7 * shared + rng.normal(0, 5, n),
+            "L1PA2": rng.uniform(800, 1200, n),
+            "NEGATIVE": 900 * gb + rng.normal(0, 4, n),
+        },
+        index=lengths.index,
+    )
+    return classifier, alignment
+
+
+def test_load_chrom_lengths_skips_comments_and_extra_columns(chrom_sizes, tmp_path):
+    lengths = load_chrom_lengths(chrom_sizes)
+    assert len(lengths) == len(_CHROMS)
+    assert lengths["chr1"] == pytest.approx(250_000_000)
+    # A .fai carries three further columns; only the first two may be read.
+    fai = tmp_path / "ref.fa.fai"
+    fai.write_text("chr1\t248956422\t112\t60\t61\nchr2\t242193529\t253104910\t60\t61\n")
+    from_fai = load_chrom_lengths(fai)
+    assert from_fai["chr2"] == pytest.approx(242193529)
+
+
+def test_chrom_length_correlations_reject_an_unmeasured_chromosome(leaky, chrom_sizes):
+    _, classifier, alignment = leaky
+    lengths = load_chrom_lengths(chrom_sizes).drop("chrX")
+    with pytest.raises(ValueError, match="chrX"):
+        chrom_length_correlations(classifier, alignment, lengths)
+
+
+def test_length_mediated_association_collapses_under_adjustment(chrom_sizes):
+    lengths = load_chrom_lengths(chrom_sizes)
+    classifier, alignment = _length_split_frames(lengths)
+    table = chrom_length_correlations(classifier, alignment, lengths)
+    row = table[
+        (table["classifier_class"] == "NEGATIVE") & (table["alignment_class"] == "NEGATIVE")
+    ].iloc[0]
+    assert row["pearson_r"] > 0.9
+    assert abs(row["partial_r_given_chrom_length"]) < 0.4
+    assert row["delta_r"] < -0.5
+
+
+def test_length_free_association_survives_adjustment(chrom_sizes):
+    lengths = load_chrom_lengths(chrom_sizes)
+    classifier, alignment = _length_split_frames(lengths)
+    table = chrom_length_correlations(classifier, alignment, lengths)
+    row = table[(table["classifier_class"] == "L1HS") & (table["alignment_class"] == "L1HS")].iloc[
+        0
+    ]
+    assert row["pearson_r"] > 0.9
+    assert row["partial_r_given_chrom_length"] > 0.9
+    assert abs(row["delta_r"]) < 0.05
+
+
+def test_chrom_length_correlations_report_each_axis_dependence(chrom_sizes):
+    lengths = load_chrom_lengths(chrom_sizes)
+    classifier, alignment = _length_split_frames(lengths)
+    table = chrom_length_correlations(classifier, alignment, lengths)
+    assert len(table) == len(CLASSES) ** 2
+    assert (table["n_chrom"] == len(_CHROMS)).all()
+    # The marginal columns are a property of the axis, so they repeat by class.
+    for klass in CLASSES:
+        own = table[table["classifier_class"] == klass]["classifier_r_vs_length"]
+        assert own.nunique() == 1
+        other = table[table["alignment_class"] == klass]["alignment_r_vs_length"]
+        assert other.nunique() == 1
+    negative = table[table["classifier_class"] == "NEGATIVE"].iloc[0]
+    l1hs = table[table["classifier_class"] == "L1HS"].iloc[0]
+    assert negative["classifier_r_vs_length"] > 0.9
+    assert abs(l1hs["classifier_r_vs_length"]) < 0.4
