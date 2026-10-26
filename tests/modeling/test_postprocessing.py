@@ -84,6 +84,7 @@ class TestFilterIds:
         result = _runner.invoke(
             app,
             [
+                "filter-ids",
                 "--output-path", str(tmp_path),
                 "--id-list", str(id_list),
                 "--threshold", "0.5",
@@ -110,6 +111,7 @@ class TestFilterIds:
         result = _runner.invoke(
             app,
             [
+                "filter-ids",
                 "--output-path", str(tmp_path),
                 "--id-list", str(id_list),
                 "--output-filtered-ids", str(out_file),
@@ -137,6 +139,7 @@ class TestFilterIds:
         result = _runner.invoke(
             app,
             [
+                "filter-ids",
                 "--output-path", str(tmp_path),
                 "--id-list", str(id_list),
                 "--threshold", "0.5",
@@ -164,6 +167,7 @@ class TestFilterIds:
         result = _runner.invoke(
             app,
             [
+                "filter-ids",
                 "--output-path", str(tmp_path),
                 "--id-list", str(id_list),
                 "--output-filtered-ids", str(tmp_path / "out.txt"),
@@ -175,5 +179,5 @@ class TestFilterIds:
 
     @pytest.mark.unit
     def test_no_input_exits_nonzero(self, tmp_path):
-        result = _runner.invoke(app, ["--output-path", str(tmp_path)])
+        result = _runner.invoke(app, ["filter-ids", "--output-path", str(tmp_path)])
         assert result.exit_code != 0
