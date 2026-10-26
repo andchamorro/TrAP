@@ -1,9 +1,8 @@
 """Track 1 — decision-boundary & calibration optimisation for the L1 classifier.
 
-Implements the cheapest macro-F1 lift in the L1PA-vs-NEGATIVE specificity plan
-(``.trap/plans/l1pa-negative-specificity-data-centric.md`` §2): the model emits
-3-way probabilities and the *rule* mapping them to a label is tunable, without
-any retrain.
+Implements the cheapest available macro-F1 lift: the model emits 3-way
+probabilities and the *rule* mapping them to a label is tunable, without any
+retrain.
 
 Two stages, deliberately decoupled so the analytical heart is CPU-only and
 fully testable:

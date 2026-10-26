@@ -8,9 +8,7 @@ not deleted, as of the Track A decision (2026-06-10).
 
 A 40-epoch / ~35-hour MLM run on Grace (job `18746482`) completed cleanly but
 **never learned**: train loss sat at `ln(vocab) = 11.09` and masked-token
-accuracy stayed ≈ 0. Root cause (full diagnosis in
-`.trap/summaries/refactor-update_core_improve_repro.md` §8.5 and
-`.trap/plans/mlm-pretraining-freeze-action-plan.md` §0):
+accuracy stayed ≈ 0. Root cause:
 
 - The Salmon k=17 tokenizer feature-hashes canonical k-mers into 65 536 buckets
   with `splitmix64`, a non-invertible avalanche hash. Adjacent token **ids** are

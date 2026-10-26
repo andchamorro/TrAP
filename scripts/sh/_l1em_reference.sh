@@ -14,8 +14,7 @@
 # The BED MUST be in L1EM's `family.category.locus.strand` form (col4 e.g.
 # `UID107.1.chr1:71514617-71519522.+`) — NOT the generator's hsflil1_8438.bed, whose col4 is
 # `UID-107` (that one builds the salmon index / ground truth). Keep them as separate files:
-# the L1EM annotation lives at data/ref/l1base/hsflil1_8438.l1em.bed (canonical copy in
-# .trap/L1EM/annotation/hsflil1_8438.bed). The format check below catches a wrong-BED mixup,
+# the L1EM annotation lives at data/ref/l1base/hsflil1_8438.l1em.bed. The format check below catches a wrong-BED mixup,
 # which is what produced the earlier empty full_counts.txt.
 ensure_l1em_reference() {
     local bed="$1" l1em_path="$2" genome="$3" tag="${4:-l1em}"
@@ -27,8 +26,8 @@ ensure_l1em_reference() {
         *.*) : ;;   # family.category.locus.strand → good
         *) echo "[${tag}] ERROR: ${bed} col4='${c4}' is not L1EM format (need" \
                 "family.category.locus.strand, e.g. UID107.1.chr1:71514617-71519522.+)." \
-                "This looks like the generator's UID-NNN BED — set L1EM_BED to the L1EM" \
-                "annotation (.trap/L1EM/annotation/hsflil1_8438.bed). See .trap/L1EM/README.md." >&2
+                "This looks like the generator's UID-NNN BED — set L1EM_BED to the" \
+                "L1EM annotation (data/ref/l1base/hsflil1_8438.l1em.bed)." >&2
            return 1 ;;
     esac
     if [[ ! -f "${ann_bed}" ]] || ! cmp -s "${abs_bed}" "${ann_bed}"; then
