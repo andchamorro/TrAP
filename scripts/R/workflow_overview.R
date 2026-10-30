@@ -121,15 +121,16 @@ p <- ggplot() +
            label = "TrAP Workflow Overview") +
   annotate("text", x = 8.9, y = 7.15, size = 6.0, color = "#444444",
            label = "Build a k-mer classifier once, then apply it per sample to quantify LINE-1") +
-  coord_cartesian(xlim = c(0, 17.8), ylim = c(0.2, 7.85), clip = "off") +
+  # Limits hug the drawn content (track backgrounds, title) so the figure has no white margin.
+  coord_cartesian(xlim = c(0.55, 17.35), ylim = c(0.98, 7.68), expand = FALSE, clip = "off") +
   theme_void() +
-  theme(plot.margin = margin(16, 16, 16, 16))
+  theme(plot.margin = margin(4, 4, 4, 4))
 
 # r-cairo (from environment.yml) renders the Unicode arrows cleanly.
 for (ext in c("png", "pdf")) {
   dev <- if (ext == "png") "cairo" else cairo_pdf
   args <- list(filename = file.path(out_dir, paste0("workflow_overview.", ext)),
-               plot = p, width = 24, height = 9.5, dpi = 300, bg = "white")
+               plot = p, width = 20.32, height = 7.32, dpi = 300, bg = "white")
   if (ext == "png") args$type <- "cairo" else args$device <- dev
   do.call(ggsave, args)
 }
