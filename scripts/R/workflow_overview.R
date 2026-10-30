@@ -38,19 +38,21 @@ nodes <- data.frame(
   h     = c(0.50, 0.50, 0.50, 0.50,  0.50, 0.50, 0.50, 0.50, 0.50,  0.42),
   label = c(
     "GENCODE v48 transcripts\n+ RepeatMasker L1",
-    "Canonical k-mer tokenizer\n(k = 17, 1 token / k-mer)",
+    'atop("Canonical k-mer tokenizer", "(" * italic(k) * " = 17, 1 token / k-mer)")',
     "Synthetic reads\n(ART → STAR → label)",
     "L1HS / L1PA / NEGATIVE\nclassifier (ALBERT, direct)",
     "Sample FASTQ",
     "k-mer tokenize",
     "Streaming GPU inference\n→ per-read scores",
-    "Filter NEGATIVE\n(P < tau)",
+    'atop("Filter NEGATIVE", "(" * italic(P) < italic("\u03c4") * ")")',
     "Salmon / EM →\nLINE-1 abundance",
     "k-mer length selection\n(entropy / redundancy · stage 05)"
   ),
   fill  = c(COL_INPUT, COL_TOK, COL_DATA, COL_MODEL, COL_INPUT,
             COL_TOK, COL_INFER, COL_FILTER, COL_OUT, COL_AUX),
   stage = c("stage 00", "stage 10", "stage 20", "stage 30", "", "", "stage 40", "", "", ""),
+  # Labels that name a variable are plotmath, so the variable can be set in italic.
+  math  = c(FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE),
   stringsAsFactors = FALSE
 )
 nodes$xmin <- nodes$cx - nodes$w
@@ -108,8 +110,10 @@ p <- ggplot() +
   annotate("text", x = 10.85, y = 3.5, hjust = 0, size = 5.625, fontface = "italic",
            color = "#7A4FB6", label = "trained model") +
   box_layers(nodes, border = "grey35", lwd = 1.7, radius = unit(8, "pt")) +
-  geom_text(data = nodes, aes(x = cx, y = cy, label = label),
+  geom_text(data = nodes[!nodes$math, ], aes(x = cx, y = cy, label = label),
             size = 5.875, lineheight = 1.05, color = "#202020") +
+  geom_text(data = nodes[nodes$math, ], aes(x = cx, y = cy, label = label), parse = TRUE,
+            size = 5.875, color = "#202020") +
   geom_text(data = nodes[nodes$stage != "", ],
             aes(x = cx, y = ymin - 0.24, label = stage),
             size = 6.5, color = "#7A7A7A", fontface = "italic") +
@@ -117,16 +121,17 @@ p <- ggplot() +
            label = "TrAP Workflow Overview") +
   annotate("text", x = 8.9, y = 7.15, size = 6.0, color = "#444444",
            label = "Build a k-mer classifier once, then apply it per sample to quantify LINE-1") +
-  coord_cartesian(xlim = c(0, 17.8), ylim = c(0.2, 7.85), clip = "off") +
+  # Limits hug the drawn content (track backgrounds, title) so the figure has no white margin.
+  coord_cartesian(xlim = c(0.55, 17.35), ylim = c(0.98, 7.68), expand = FALSE, clip = "off") +
   theme_void() +
-  theme(plot.margin = margin(16, 16, 16, 16))
+  theme(plot.margin = margin(4, 4, 4, 4))
 
 # r-cairo (from environment.yml) renders the Unicode arrows cleanly.
 for (ext in c("png", "pdf")) {
   dev <- if (ext == "png") "cairo" else cairo_pdf
   args <- list(filename = file.path(out_dir, paste0("workflow_overview.", ext)),
-               plot = p, width = 24, height = 9.5, dpi = 300, bg = "white")
-  if (ext == "png") args$type <- "cairo"
+               plot = p, width = 20.32, height = 7.32, dpi = 300, bg = "white")
+  if (ext == "png") args$type <- "cairo" else args$device <- dev
   do.call(ggsave, args)
 }
 message("wrote ", file.path(out_dir, "workflow_overview.{png,pdf}"))
