@@ -111,7 +111,11 @@ grid tree.
 | Abundance harmonization (TPM / RPM) | `trap/analysis/quantification.py` |
 
 Stage A collector: `scripts/aggregate_srr_l1em_exp.py` (on Grace), writing
-`results/srr_experiment/l1em_salmon_fpm.csv`.
+`results/srr_experiment/l1em_salmon_fpm.csv`. The 5'RACE axis (`race5`) is the
+featureCounts output of `scripts/5race_read_count.sh` →
+`scripts/sh/bwamemAndCount.sh` on SRR4099955; the Salmon and AlbertSalmon
+estimates come from `scripts/salmon_pipeline.sh` (settings in
+`config/baselines/baseline_settings.yaml`).
 
 ## Chromosome-level comparison
 
@@ -149,5 +153,5 @@ manuscript or its supplement.
 | `trap/analysis/ensemble.py` | Soft-vote ensemble over the canonical-k-mer and SentencePiece models. Not used; also imported by `quantification.py`. |
 | `trap/analysis/diagnostics.py`, `scripts/slurm/21_dataset_diagnosis.slurm` | Build-time validation of the stage-20 outputs (class balance, transcript leakage, warmup steps). |
 | `trap/analysis/ablation.py` | Separability of the three classes across k, measured with a logistic regression on hashed k-mer frequencies as a lightweight proxy for the full model. Run as part of `python -m trap.analysis run`, but no figure reports it, and the manuscript states that the matched-capacity ALBERT ablation remains untested. |
-| `scripts/sh/bowtie1AndCount.sh`, `bowtie2AndCount.sh`, `hisat2AndCount.sh`, `bwamemAndCount.sh`, `starAndCount.sh` | Alignment-and-count wrappers from earlier exploration. The reported comparisons use STAR (`align_star.sh`) and BWA (`bwaAndCount.sh`). |
+| `scripts/sh/bowtie1AndCount.sh`, `bowtie2AndCount.sh`, `hisat2AndCount.sh`, `starAndCount.sh` | Alignment-and-count wrappers from earlier exploration. The reported comparisons use STAR (`align_star.sh`), BWA (`bwaAndCount.sh`) and, for the 5'RACE reference, BWA-MEM (`bwamemAndCount.sh`). |
 | `scripts/slurm/legacy/preprocessing_sequences.slurm`, `train_repeatmasker.slurm`, `train_transcripts.slurm`, `write_trainscrips_kmers.py`, `google_sentencepiece.slurm` | Superseded by the current dataset and tokenizer stages. |
