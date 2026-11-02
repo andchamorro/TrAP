@@ -2,7 +2,7 @@
 
 Draft drivers for the synthetic-insertion series (insertion level 5–13 ×
 deletion probability 0–0.1), written before the stage wrappers existed. Moved
-here from `scripts/draft/`, where `cda11a7` had parked them.
+here from `scripts/draft/`, where `2f02e59` had parked them.
 
 | File | Successor |
 |---|---|

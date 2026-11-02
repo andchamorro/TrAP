@@ -7,4 +7,4 @@ featureCounts. None is behind a reported result. The reported comparisons use
 (chromosome-level axis) and `scripts/sh/bwamemAndCount.sh` (the 5'RACE reference
 of Figure 11), which stay in `scripts/sh/`.
 
-Moved from `scripts/sh/`; they arrived there in `cda11a7`.
+Moved from `scripts/sh/`; they arrived there in `2f02e59`.
