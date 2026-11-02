@@ -13,6 +13,15 @@ Typer app in `trap/analysis/cli.py`; `scripts/slurm/*.slurm` are the Grace HPRC
 wrappers that ran each stage, and each records a run manifest (software
 versions, seeds, parameters, input checksums) beside its output.
 
+Paths are valid at the GitHub release
+[`v1.0.0`](https://github.com/andchamorro/TrAP/releases/tag/v1.0.0) (commit
+`8b93871`), the version cited by the published article. The earlier Zenodo
+deposit under the concept DOI
+[10.5281/zenodo.22757448](https://doi.org/10.5281/zenodo.22757448) (record
+22757449, labelled 0.0.1, 2026-09-14) is a snapshot of commit `10596d7`, made
+before the review rounds; it does not contain the code behind the published
+results.
+
 ## Dataset
 
 | Item | Code |
