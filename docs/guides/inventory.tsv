@@ -4,7 +4,30 @@ path	class	evidence	action	owner
 .zenodo.json	SUPPORT	refs=2	keep	maintainer
 LICENSE	SUPPORT	refs=6	keep	maintainer
 Makefile	SUPPORT	refs=2	keep	maintainer
-README.md	SUPPORT	refs=12	keep	maintainer
+README.md	SUPPORT	refs=13	keep	maintainer
+archive/README.md	ARCHIVE	refs=14	archive README	maintainer
+archive/config/README.md	ARCHIVE	refs=13	archive README	maintainer
+archive/config/runs/README.md	ARCHIVE	refs=14	archive README	maintainer
+archive/config/runs/spm_k8.yaml	ARCHIVE	refs=4	archived (P3.3), moved from config/runs/spm_k8.yaml; see docs/guides/archive_index.md	maintainer
+archive/config/trainer_config_base_uncased_fsdp.json	ARCHIVE	refs=2	archived (P3.3), moved from config/trainer_config_base_uncased_fsdp.json; see docs/guides/archive_index.md	maintainer
+archive/scripts/README.md	ARCHIVE	refs=14	archive README	maintainer
+archive/scripts/draft/README.md	ARCHIVE	refs=14	archive README	maintainer
+archive/scripts/draft/run_l1em_mut.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/draft/run_l1em_mut.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/draft/run_mlem.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/draft/run_mlem.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/draft/run_mlem_mut.sh	ARCHIVE	refs=3	archived (P3.3), moved from scripts/draft/run_mlem_mut.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/draft/run_mlsalmon_mut.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/draft/run_mlsalmon_mut.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/draft/run_salmon_mut.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/draft/run_salmon_mut.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/extract_filtered.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/extract_filtered.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/quantify_preprocessing.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/quantify_preprocessing.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/quantify_repeatmasker.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/quantify_repeatmasker.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/run_l1em.sh	ARCHIVE	refs=8	archived (P3.3), moved from scripts/run_l1em.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/run_salmon.sh	ARCHIVE	refs=7	archived (P3.3), moved from scripts/run_salmon.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/sh/README.md	ARCHIVE	refs=14	archive README	maintainer
+archive/scripts/sh/bowtie1AndCount.sh	ARCHIVE	provenance:exploratory; refs=2	archived (P3.3), moved from scripts/sh/bowtie1AndCount.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/sh/bowtie2AndCount.sh	ARCHIVE	provenance:exploratory; refs=2	archived (P3.3), moved from scripts/sh/bowtie2AndCount.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/sh/hisat2AndCount.sh	ARCHIVE	provenance:exploratory; refs=2	archived (P3.3), moved from scripts/sh/hisat2AndCount.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/sh/starAndCount.sh	ARCHIVE	provenance:exploratory; refs=2	archived (P3.3), moved from scripts/sh/starAndCount.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/train_repeatmasker.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/train_repeatmasker.sh; see docs/guides/archive_index.md	maintainer
 config/albert_config_base_uncased.json	PIPELINE	refs=2	keep; default in trap/modeling/{train,predict}.py; move to config/legacy/ only together with the code default	maintainer
 config/albert_config_k17_v48.json	PIPELINE	refs=8	keep	maintainer
 config/analysis/entropy_redundancy.yaml	REPORTED	provenance:reported; refs=5; review=1	keep; frozen API	maintainer
@@ -17,11 +40,9 @@ config/runs/bpe.yaml	PIPELINE	refs=2	keep	maintainer
 config/runs/default.yaml	PIPELINE	refs=10	keep	maintainer
 config/runs/salmon.yaml	PIPELINE	refs=18	keep	maintainer
 config/runs/salmon_seqlabel.yaml	PIPELINE	refs=4	keep	maintainer
-config/runs/spm.yaml	PIPELINE	refs=5	keep	maintainer
-config/runs/spm_k8.yaml	ARCHIVE	refs=1	move to archive/config/runs/ (P3.3); D-ASK default, no caller	maintainer
+config/runs/spm.yaml	PIPELINE	refs=6	keep	maintainer
 config/trainer_config_base_repeatmasker.json	PIPELINE	refs=4	keep; default in trap/modeling/{train,predict}.py; move to config/legacy/ only together with the code default	maintainer
-config/trainer_config_base_uncased.json	PIPELINE	refs=2	keep; default in trap/modeling/{train,predict}.py; move to config/legacy/ only together with the code default	maintainer
-config/trainer_config_base_uncased_fsdp.json	ARCHIVE	refs=0	move to archive/config/ (P3.3); D-ASK default, no caller	maintainer
+config/trainer_config_base_uncased.json	PIPELINE	refs=3	keep; default in trap/modeling/{train,predict}.py; move to config/legacy/ only together with the code default	maintainer
 config/training/classification.smoke.json	PIPELINE	refs=2	keep	maintainer
 config/training/classification_final.json	PIPELINE	refs=15	keep	maintainer
 config/training/classification_final.tuned.json	PIPELINE	refs=9	keep	maintainer
@@ -49,12 +70,12 @@ docs/development/tokenizer_debug.md	SUPPORT	refs=0	keep	maintainer
 docs/development/training_workflow_tests.md	SUPPORT	refs=1	keep	maintainer
 docs/figures/workflow_overview.pdf	SUPPORT	refs=0	keep	maintainer
 docs/figures/workflow_overview.png	SUPPORT	refs=1	keep	maintainer
-docs/guides/archive_index.md	SUPPORT	refs=2	keep	maintainer
+docs/guides/archive_index.md	SUPPORT	provenance:exploratory; refs=4	keep	maintainer
 docs/guides/hpc.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/hyperparameter_tuning.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/installation.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/inventory.tsv	SUPPORT	refs=2	keep	maintainer
-docs/guides/manuscript_provenance.md	SUPPORT	refs=2	keep	maintainer
+docs/guides/manuscript_provenance.md	SUPPORT	refs=4	keep	maintainer
 docs/guides/pipeline.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/reproduction.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/synthetic_validation.md	SUPPORT	refs=3	keep	maintainer
@@ -73,7 +94,7 @@ notebooks/5.05-ach-albert_quantify_SRR3997504.ipynb	REPORTED	provenance:reported
 notebooks/5.06-ach-albert_exp_SRR3997504_SRR4099955.ipynb	REPORTED	provenance:reported; refs=1	keep; frozen API	maintainer
 notebooks/5.07-ach-model-interpretability.ipynb	REPORTED	provenance:reported; refs=3; review=5	keep; frozen API	maintainer
 pyproject.toml	SUPPORT	refs=4	keep	maintainer
-recipe/README.md	SUPPORT	refs=13; review=1	keep	maintainer
+recipe/README.md	SUPPORT	refs=14; review=1	keep	maintainer
 recipe/build.bat	SUPPORT	refs=1	keep	maintainer
 recipe/build.sh	SUPPORT	refs=1	keep	maintainer
 recipe/meta.yaml	SUPPORT	refs=1	keep	maintainer
@@ -95,41 +116,27 @@ scripts/data/fetch_references.sh	PIPELINE	refs=8; review=1	keep	maintainer
 scripts/diagnose_mlm_learnability.py	PIPELINE	refs=1	keep	maintainer
 scripts/diagnostics/kmer_overlap.py	PIPELINE	refs=2	keep	maintainer
 scripts/divide_gff.py	PIPELINE	refs=8; review=1; print=3	keep	maintainer
-scripts/draft/run_l1em_mut.sh	ARCHIVE	refs=0	move to archive/scripts/draft/ (P3.3); lineage: run_mlem_mut.sh -> scripts/sh/run_albertem.sh	maintainer
-scripts/draft/run_mlem.sh	ARCHIVE	refs=0	move to archive/scripts/draft/ (P3.3); lineage: run_mlem_mut.sh -> scripts/sh/run_albertem.sh	maintainer
-scripts/draft/run_mlem_mut.sh	ARCHIVE	refs=1	move to archive/scripts/draft/ (P3.3); lineage: run_mlem_mut.sh -> scripts/sh/run_albertem.sh	maintainer
-scripts/draft/run_mlsalmon_mut.sh	ARCHIVE	refs=0	move to archive/scripts/draft/ (P3.3); lineage: run_mlem_mut.sh -> scripts/sh/run_albertem.sh	maintainer
-scripts/draft/run_salmon_mut.sh	ARCHIVE	refs=0	move to archive/scripts/draft/ (P3.3); lineage: run_mlem_mut.sh -> scripts/sh/run_albertem.sh	maintainer
-scripts/extract_filtered.sh	ARCHIVE	refs=0	move to archive/scripts/ (P3.3); D-ASK default, no caller	maintainer
 scripts/generate_dataset.sh	PIPELINE	refs=2	keep	maintainer
 scripts/make_supplementary_tables.py	REPORTED	provenance:reported; refs=1; print=1	keep; frozen API	maintainer
 scripts/python/audit_repo.py	SUPPORT	refs=1; todo=6; review=2	keep; generates this inventory (marker counts are its own regex literals)	maintainer
 scripts/python/explore_logreg_kmer_baseline.py	EXPLORATORY-KEEP	provenance:exploratory; refs=2; review=2; print=1	keep; listed under 'Not behind any reported result' in manuscript_provenance.md	maintainer
 scripts/python/generate_synthetic_dataset.py	REPORTED	provenance:reported; refs=3; print=2	keep; frozen API	maintainer
 scripts/python/synthetic_abundance.py	REPORTED	provenance:reported; refs=4; review=1; print=12	keep; frozen API	maintainer
-scripts/quantify_preprocessing.sh	ARCHIVE	refs=0	move to archive/scripts/ (P3.3); D-ASK default, no caller	maintainer
-scripts/quantify_repeatmasker.sh	ARCHIVE	refs=0	move to archive/scripts/ (P3.3); D-ASK default, no caller	maintainer
 scripts/rm_to_gff3.py	PIPELINE	refs=2; review=1; print=8	keep	maintainer
 scripts/run_entropy_redundancy.sh	SUPPORT	refs=0	keep (D-ASK); local runner of the reported k-selection, Grace uses 05_entropy_redundancy.slurm	maintainer
-scripts/run_l1em.sh	ARCHIVE	refs=5	move to archive/scripts/ (P3.3); superseded by scripts/sh/run_l1em.sh (refs are basename collisions)	maintainer
-scripts/run_salmon.sh	ARCHIVE	refs=4	move to archive/scripts/ (P3.3); superseded by scripts/sh/run_salmon.sh (refs are basename collisions)	maintainer
 scripts/salmon_pipeline.sh	REPORTED	provenance:reported; refs=2	keep; frozen API (Figure 11)	maintainer
 scripts/setup_conda_env.sh	PIPELINE	refs=5	keep	maintainer
 scripts/sh/_l1em_reference.sh	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
 scripts/sh/_synthetic_paths.sh	REPORTED	provenance:reported; refs=13; review=1	keep; frozen API	maintainer
-scripts/sh/align_star.sh	REPORTED	provenance:reported; refs=7	keep; frozen API	maintainer
-scripts/sh/bowtie1AndCount.sh	ARCHIVE	provenance:exploratory; refs=1	move to archive/scripts/sh/ (P3.3); exploratory aligner; update its provenance-guide row to the archive path	maintainer
-scripts/sh/bowtie2AndCount.sh	ARCHIVE	provenance:exploratory; refs=1	move to archive/scripts/sh/ (P3.3); exploratory aligner; update its provenance-guide row to the archive path	maintainer
-scripts/sh/bwaAndCount.sh	REPORTED	provenance:reported; refs=1	keep; frozen API	maintainer
-scripts/sh/bwamemAndCount.sh	REPORTED	provenance:reported; refs=3	keep; 5'RACE race5 reference of Figure 11 via scripts/5race_read_count.sh	maintainer
+scripts/sh/align_star.sh	REPORTED	provenance:reported; refs=8	keep; frozen API	maintainer
+scripts/sh/bwaAndCount.sh	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
+scripts/sh/bwamemAndCount.sh	REPORTED	provenance:reported; refs=4	keep; 5'RACE race5 reference of Figure 11 via scripts/5race_read_count.sh	maintainer
 scripts/sh/generate_synthetic_dataset.sh	REPORTED	provenance:reported; refs=8	keep; frozen API	maintainer
-scripts/sh/hisat2AndCount.sh	ARCHIVE	provenance:exploratory; refs=1	move to archive/scripts/sh/ (P3.3); exploratory aligner; update its provenance-guide row to the archive path	maintainer
-scripts/sh/run_albertem.sh	REPORTED	provenance:reported; refs=4	keep; frozen API	maintainer
+scripts/sh/run_albertem.sh	REPORTED	provenance:reported; refs=5	keep; frozen API	maintainer
 scripts/sh/run_htseq.sh	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
-scripts/sh/run_l1em.sh	PIPELINE	refs=4	keep	maintainer
-scripts/sh/run_salmon.sh	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
+scripts/sh/run_l1em.sh	PIPELINE	refs=7	keep	maintainer
+scripts/sh/run_salmon.sh	REPORTED	provenance:reported; refs=6	keep; frozen API	maintainer
 scripts/sh/run_tetranscripts.sh	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
-scripts/sh/starAndCount.sh	ARCHIVE	provenance:exploratory; refs=1	move to archive/scripts/sh/ (P3.3); exploratory aligner; update its provenance-guide row to the archive path	maintainer
 scripts/slurm/00_env_check.slurm	SUPPORT	refs=0	keep; pre-flight environment check	maintainer
 scripts/slurm/00_fetch_references.slurm	PIPELINE	refs=1; review=1	keep	maintainer
 scripts/slurm/05_entropy_redundancy.slurm	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
@@ -153,26 +160,26 @@ scripts/slurm/50_benchmark.slurm	PIPELINE	refs=1; review=1	keep	maintainer
 scripts/slurm/60_generate_synthetic.slurm	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
 scripts/slurm/61_synthetic_abundance.slurm	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
 scripts/slurm/62_synthetic_validation.slurm	REPORTED	provenance:reported; refs=6	keep; frozen API	maintainer
-scripts/slurm/63_run_baseline.slurm	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
+scripts/slurm/63_run_baseline.slurm	REPORTED	provenance:reported; refs=4	keep; frozen API	maintainer
 scripts/slurm/64_baseline_compare.slurm	REPORTED	provenance:reported; refs=1	keep; frozen API	maintainer
 scripts/slurm/65_subfamily_confusion.slurm	EXPLORATORY-KEEP	provenance:exploratory; refs=1	keep; listed under 'Not behind any reported result' in manuscript_provenance.md	maintainer
 scripts/slurm/70_interpret.slurm	REPORTED	provenance:reported; refs=1; review=1	keep; frozen API	maintainer
 scripts/slurm/71_kmer_overlap.slurm	REPORTED	provenance:reported; refs=1	keep; frozen API	maintainer
-scripts/slurm/README.md	PIPELINE	refs=13	keep	maintainer
+scripts/slurm/README.md	PIPELINE	refs=14	keep	maintainer
 scripts/slurm/_common.sh	PIPELINE	refs=50	keep	maintainer
 scripts/slurm/hpc_config.py	PIPELINE	refs=5; print=11	keep	maintainer
-scripts/slurm/legacy/google_sentencepiece.slurm	ARCHIVE	provenance:exploratory; refs=1	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
+scripts/slurm/legacy/google_sentencepiece.slurm	ARCHIVE	provenance:exploratory; refs=2	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
 scripts/slurm/legacy/mlm/24_mlm_smoke.slurm	REPORTED	refs=1	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
 scripts/slurm/legacy/mlm/25_tune_mlm.slurm	REPORTED	refs=2	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
 scripts/slurm/legacy/mlm/25_tune_mlm_finalize.slurm	REPORTED	refs=3	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
 scripts/slurm/legacy/mlm/30_mlm_pretrain.slurm	REPORTED	refs=3; review=1	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
-scripts/slurm/legacy/mlm/README.md	REPORTED	refs=13	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
-scripts/slurm/legacy/preprocessing_sequences.slurm	ARCHIVE	provenance:exploratory; refs=1	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
+scripts/slurm/legacy/mlm/README.md	REPORTED	refs=14	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
+scripts/slurm/legacy/preprocessing_sequences.slurm	ARCHIVE	provenance:exploratory; refs=2	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
 scripts/slurm/legacy/sentence_piece.slurm	REPORTED	provenance:reported; refs=1	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
-scripts/slurm/legacy/train_repeatmasker.slurm	ARCHIVE	provenance:exploratory; refs=1	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
+scripts/slurm/legacy/train_repeatmasker.slurm	ARCHIVE	provenance:exploratory; refs=2	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
 scripts/slurm/legacy/train_sentencepiece.py	REPORTED	refs=2; todo=4	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
-scripts/slurm/legacy/train_transcripts.slurm	ARCHIVE	provenance:exploratory; refs=1	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
-scripts/slurm/legacy/write_trainscrips_kmers.py	ARCHIVE	provenance:exploratory; refs=2; todo=4	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
+scripts/slurm/legacy/train_transcripts.slurm	ARCHIVE	provenance:exploratory; refs=2	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
+scripts/slurm/legacy/write_trainscrips_kmers.py	ARCHIVE	provenance:exploratory; refs=3; todo=4	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
 scripts/slurm/spm_gate2_mlm_learnability.slurm	REPORTED	provenance:reported; refs=1	keep; frozen API	maintainer
 scripts/slurm/submit_generate_synthetic.sh	PIPELINE	refs=3	keep	maintainer
 scripts/slurm/submit_pipeline.sh	REPORTED	provenance:reported; refs=24	keep; frozen API	maintainer
@@ -181,7 +188,6 @@ scripts/slurm/submit_synthetic_abundance.sh	PIPELINE	refs=2	keep	maintainer
 scripts/slurm/submit_synthetic_validation.sh	PIPELINE	refs=2	keep	maintainer
 scripts/slurm/submit_tests.sh	PIPELINE	refs=3	keep	maintainer
 scripts/slurm/submit_tuning.sh	PIPELINE	refs=13	keep	maintainer
-scripts/train_repeatmasker.sh	ARCHIVE	refs=0	move to archive/scripts/ (P3.3); D-ASK default, no caller	maintainer
 scripts/zenodo_sync.py	SUPPORT	refs=0; print=11	keep; release tooling (syncs .zenodo.json, opens a new-version draft)	maintainer
 setup.cfg	SUPPORT	refs=1	keep	maintainer
 tests/__init__.py	SUPPORT	refs=0	keep	maintainer

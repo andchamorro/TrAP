@@ -3,7 +3,7 @@
 # reads against the L1 index, for every grid cell. This is the "Salmon" column of the
 # abundance comparison (contrast: "AlbertSalmon" = classifier-filtered → salmon).
 #
-# Refactor of notebooks/scripts/run_salmon.sh: source-suffixed dataset dir, the
+# Refactor of archive/scripts/run_salmon.sh: source-suffixed dataset dir, the
 # generator's l1_synthetic.Index (quant targets == ground-truth elements), --sketch
 # (selective alignment panics on the short L1 refs), resumable.
 #

@@ -17,8 +17,8 @@
 #       --tokenizer-path models/tokenizer.gencode.v48.k17.spm \
 #       --builder <R1.fq> --pair <R2.fq> --k 17
 # p99 tokens/pair must clear max_position_embeddings (1280). The Salmon baseline
-# is 271 tokens/pair for a 2x150 bp pair; if SPM blows past 1280, use spm_k8.yaml
-# or raise max_position_embeddings.
+# is 271 tokens/pair for a 2x150 bp pair; if SPM blows past 1280, use the k=8 fallback
+# archived at archive/config/runs/spm_k8.yaml, or raise max_position_embeddings.
 #
 # Usage:
 #   TRAP_SPM_EXPERIMENTAL=1 bash scripts/slurm/submit_pipeline.sh \

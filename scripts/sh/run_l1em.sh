@@ -1,6 +1,6 @@
 #!/bin/bash
 # Baseline method: L1EM — EM quantification of L1 expression from the STAR BAM.
-# Refactor of notebooks/scripts/run_l1em.sh: source-suffixed dataset dir, configurable
+# Refactor of archive/scripts/run_l1em.sh: source-suffixed dataset dir, configurable
 # external L1EM repo, resumable. Requires scripts/sh/align_star.sh to have run first.
 #
 #   L1EM_PATH=/path/to/L1EM bash scripts/sh/run_l1em.sh
