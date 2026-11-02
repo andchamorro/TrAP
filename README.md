@@ -366,7 +366,18 @@ with `pathlib.Path` parameters.
 
 ## Citation
 
-If you use TrAP, please cite the manuscript *A Transformers Analysis Pipeline to Evaluate
-Genome LINE-1 Sequence Content* (Chamorro-Parejo and Ramos).
+If you use TrAP, please cite the article:
+
+**APA Style**
+
+Chamorro-Parejo, A. D., & Ramos, K. S. (2026). A Transformers Analysis Pipeline (TrAP) to
+Evaluate LINE-1 RNA Sequence Content. *International Journal of Molecular Sciences*, *27*(21),
+9762. <https://doi.org/10.3390/ijms27219762>
+
+**MDPI and ACS Style**
+
+Chamorro-Parejo, A.D.; Ramos, K.S. A Transformers Analysis Pipeline (TrAP) to Evaluate LINE-1
+RNA Sequence Content. *Int. J. Mol. Sci.* **2026**, *27*, 9762.
+<https://doi.org/10.3390/ijms27219762>
 
 The software itself is archived on Zenodo: [10.5281/zenodo.22757448](https://doi.org/10.5281/zenodo.22757448).
