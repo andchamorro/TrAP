@@ -15,9 +15,5 @@ REM Install the package using pip
 
 if errorlevel 1 exit 1
 
-REM Verify installation
-echo Verifying trap installation...
-"%PYTHON%" -c "import trap; print('TrAP imported successfully')"
-if errorlevel 1 exit 1
-
-echo Build completed successfully!
+REM Imports are verified by the recipe's test section, which runs with the run
+REM dependencies installed; the build (host) environment only has pip and flit-core.

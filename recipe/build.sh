@@ -16,9 +16,5 @@ set -euo pipefail
     --no-cache-dir \
     -vvv
 
-# Verify installation
-echo "Verifying trap installation..."
-"${PYTHON}" -c "import trap; print(f'TrAP version: {trap.__version__ if hasattr(trap, \"__version__\") else \"unknown\"}')"
-"${PYTHON}" -c "import trap.config.config; print(f'Project root: {trap.config.config.PROJ_ROOT}')"
-
-echo "Build completed successfully!"
+# Imports are verified by the recipe's test section, which runs with the run
+# dependencies installed; the build (host) environment only has pip and flit-core.
