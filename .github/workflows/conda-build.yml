@@ -71,7 +71,7 @@ jobs:
     - name: Build conda package
       shell: bash -l {0}
       run: |
-        conda build recipe/ --output-folder dist/
+        conda-build recipe/ --output-folder dist/
 
     - name: Upload conda package
       uses: actions/upload-artifact@v4
