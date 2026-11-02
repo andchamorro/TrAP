@@ -11,15 +11,15 @@ on:
 jobs:
   test:
     name: Test (ubuntu, Python 3.12)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # salmon/pysam are Linux/bioconda packages and the env hard-pins
     # python=3.12.2, so a cross-OS / multi-Python matrix cannot solve. CI mirrors
     # the one environment TrAP actually targets.
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v3
+      uses: conda-incubator/setup-miniconda@v4
       with:
         auto-update-conda: true
         channels: conda-forge,bioconda,defaults
@@ -43,20 +43,20 @@ jobs:
         pytest tests/ -v -m "not slow" --cov=trap --cov-report=xml --cov-report=term-missing
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
         files: ./coverage.xml
         fail_ci_if_error: false
 
   build-conda:
     name: Build Conda Package (ubuntu)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: test
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v3
+      uses: conda-incubator/setup-miniconda@v4
       with:
         auto-update-conda: true
         python-version: '3.12'
@@ -74,7 +74,7 @@ jobs:
         conda-build recipe/ --output-folder dist/
 
     - name: Upload conda package
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: conda-package-ubuntu
         path: dist/
@@ -97,12 +97,12 @@ jobs:
 
   lint:
     name: Lint Conda Recipe
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v3
+      uses: conda-incubator/setup-miniconda@v4
       with:
         auto-update-conda: true
         python-version: '3.12'
