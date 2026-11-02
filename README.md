@@ -1,4 +1,4 @@
-# TrAP — A Transformers Analysis Pipeline for Genome LINE-1 Content
+# A Transformers Analysis Pipeline (TrAP) to Evaluate LINE-1 RNA Sequence Content
 
 [![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -20,7 +20,7 @@ for transposable-element quantification against RepeatMasker annotations on GRCh
 > This README is the single entry point for the whole project. Deep, stage-specific docs
 > live alongside their code — most importantly **[`scripts/slurm/README.md`](scripts/slurm/README.md)**
 > for the HPC reproduction pipeline. The methodology mirrors the manuscript
-> (*A Transformers Analysis Pipeline to Evaluate Genome LINE-1 Sequence Content*); terms
+> ([*A Transformers Analysis Pipeline (TrAP) to Evaluate LINE-1 RNA Sequence Content*](https://doi.org/10.3390/ijms27219762)); terms
 > such as ALBERT, k-mer entropy, and 5′RACE validation are used here with the same meaning.
 > One deliberate departure: the manuscript's ALBERT was MLM-pretrained; TrAP trains the
 > classifier **directly** (MLM pre-training was evaluated and dropped — see step 4).

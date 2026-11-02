@@ -1,5 +1,5 @@
-TrAP — Transformers Analysis Pipeline
-======================================
+A Transformers Analysis Pipeline (TrAP) to Evaluate LINE-1 RNA Sequence Content
+===============================================================================
 
 **TrAP** treats DNA as language to detect and quantify **LINE-1 (L1)** retroelements
 in short- and long-read RNA-seq data. Reads are split into k-mers, tokenized with
@@ -20,8 +20,8 @@ nucleotide distribution of L1 sequences directly — no reference alignment requ
 .. note::
 
    This documentation mirrors the methodology in
-   *A Transformers Analysis Pipeline to Evaluate Genome LINE-1 Sequence Content*
-   (Chamorro-Parejo et al.). Terms such as ALBERT, MLM + SOP, k-mer entropy, and
+   `A Transformers Analysis Pipeline (TrAP) to Evaluate LINE-1 RNA Sequence Content <https://doi.org/10.3390/ijms27219762>`_
+   (Chamorro-Parejo and Ramos, 2026). Terms such as ALBERT, MLM + SOP, k-mer entropy, and
    5′RACE validation are used here with the same meaning as in the manuscript.
 
 .. toctree::
