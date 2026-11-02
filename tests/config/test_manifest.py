@@ -44,6 +44,13 @@ class TestWrite:
         assert "git_commit" in data
         assert "timestamp_utc" in data
 
+    def test_version_is_the_installed_package_version(self, tmp_path):
+        from importlib.metadata import version
+
+        write(tmp_path)
+        data = json.loads((tmp_path / "manifest.json").read_text())
+        assert data["trap_version"] == version("trap")
+
     def test_kwargs_merged(self, tmp_path):
         write(tmp_path, seed=3469, k=17, model={"path": "foo"})
         data = json.loads((tmp_path / "manifest.json").read_text())

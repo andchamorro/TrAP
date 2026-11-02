@@ -76,9 +76,9 @@ def write(out_dir: Path, filename: str = "manifest.json", **kwargs: Any) -> Path
     """
     try:
         import trap
-        version: str = getattr(trap, "__version__", "0.0.1")
+        version: str = getattr(trap, "__version__", "unknown")
     except Exception:
-        version = "0.0.1"
+        version = "unknown"
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
