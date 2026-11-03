@@ -1,0 +1,13 @@
+correction,factor,method,classifier_dependent,correction_applied,n,n_corrected_loci,pearson_r2,note,delta_vs_published
+published,1.0822,AlbertSalmon,True,False,156,0,0.946207,,0.000e+00
+published,1.0274,Salmon,False,False,156,0,0.815236,,0.000e+00
+published,1.0685,AlbertEM,True,False,156,0,0.945032,,0.000e+00
+published,1.0137,L1EM,False,False,156,0,0.863687,,0.000e+00
+recall_only,1.690385,AlbertSalmon,True,True,156,38,0.955567,what recall alone implies; ignores the contamination precision measures,0.03344
+recall_only,1.75625,Salmon,False,False,156,0,0.793781,what recall alone implies; ignores the contamination precision measures,0.000e+00
+recall_only,1.668429,AlbertEM,True,True,156,38,0.959614,what recall alone implies; ignores the contamination precision measures,0.039009
+recall_only,1.734295,L1EM,False,False,156,0,0.921272,what recall alone implies; ignores the contamination precision measures,0.000e+00
+net,1.190401,AlbertSalmon,True,True,156,38,0.917376,"A = T * recall / precision, so precision/recall recovers T",0.018726
+net,1.238022,Salmon,False,False,156,0,0.84742,"A = T * recall / precision, so precision/recall recovers T",0.000e+00
+net,1.174527,AlbertEM,True,True,156,38,0.917474,"A = T * recall / precision, so precision/recall recovers T",0.020566
+net,1.222148,L1EM,False,False,156,0,0.898238,"A = T * recall / precision, so precision/recall recovers T",0.000e+00

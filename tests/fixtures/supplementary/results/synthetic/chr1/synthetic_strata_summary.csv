@@ -1,0 +1,13 @@
+axis,method,n_strata,mean_r2,sd_r2,min_r2,max_r2,n_top
+insertion_level,AlbertEM,9,0.408466,0.121026,0.213518,0.554045,0
+insertion_level,AlbertSalmon,9,1.025176,0.051377,0.877053,1.017833,9
+insertion_level,HTseq,9,0.655782,0.262938,0.262639,0.956559,0
+insertion_level,L1EM,9,0.418675,0.124359,0.19169,0.555811,0
+insertion_level,Salmon,9,0.77919,0.220466,0.335728,1.007151,0
+insertion_level,TEtranscripts,9,0.706056,0.235966,0.316329,0.97639,0
+deletion_probability,AlbertEM,5,0.924868,0.00363,0.942755,0.879801,0
+deletion_probability,AlbertSalmon,5,1.021357,0.000123,1.048416,1.062363,5
+deletion_probability,HTseq,5,0.973485,0.001785,0.91047,0.926792,0
+deletion_probability,L1EM,5,0.889259,0.00609,0.902295,0.92892,0
+deletion_probability,Salmon,5,1.043097,0.001083,0.976131,0.992179,0
+deletion_probability,TEtranscripts,5,1.00564,0.002451,1.029257,1.048887,0

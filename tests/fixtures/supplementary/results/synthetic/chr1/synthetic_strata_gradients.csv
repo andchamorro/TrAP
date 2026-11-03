@@ -1,0 +1,13 @@
+axis,method,first_stratum,last_stratum,r2_first,r2_last,drop,spread
+insertion_level,AlbertEM,5,13,0.52563,0.207971,0.329093,0.333424
+insertion_level,AlbertSalmon,5,13,1.05855,0.949105,0.124574,0.127207
+insertion_level,HTseq,5,13,0.888139,0.255904,0.652554,0.681811
+insertion_level,L1EM,5,13,0.577753,0.20447,0.352049,0.356807
+insertion_level,Salmon,5,13,0.802656,0.327228,0.492303,0.658832
+insertion_level,TEtranscripts,5,13,1.014435,0.308004,0.63886,0.647379
+deletion_probability,AlbertEM,0.000e+00,0.10685,0.93907,0.942755,0.007587,0.007864
+deletion_probability,AlbertSalmon,0.000e+00,0.10548,1.06229,1.075783,0.000128,0.000314
+deletion_probability,HTseq,0.000e+00,0.10411,0.947457,0.960672,-0.000921,0.004285
+deletion_probability,L1EM,0.000e+00,0.10274,0.893641,0.890726,0.014866,0.015056
+deletion_probability,Salmon,0.000e+00,0.10137,0.979123,0.990889,0.001307,0.003112
+deletion_probability,TEtranscripts,0.000e+00,0.10959,0.964108,0.983325,-0.00627,0.006353

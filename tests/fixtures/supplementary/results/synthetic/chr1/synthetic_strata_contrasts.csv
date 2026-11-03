@@ -1,0 +1,15 @@
+axis,family,contrast,n_strata,n_won,strata_lost,mean_delta_r2,min_delta_r2,ci_lo,ci_hi,wilcoxon_p,p_floor,n_boot,seed
+insertion_level,reference,AlbertSalmon-AlbertEM,9,9,,0.557266,0.485099,0.528327,0.630772,0.004174,0.004227,5000,3469
+insertion_level,reference,AlbertSalmon-HTseq,9,9,,0.347853,0.084184,0.20115,0.468752,0.00412,0.004174,5000,3469
+insertion_level,reference,AlbertSalmon-L1EM,9,9,,0.611734,0.500628,0.52535,0.632817,0.004067,0.00412,5000,3469
+insertion_level,reference,AlbertSalmon-Salmon,9,9,,0.222887,0.068718,0.133762,0.323625,0.004013,0.004067,5000,3469
+insertion_level,reference,AlbertSalmon-TEtranscripts,9,9,,0.264537,0.069478,0.159596,0.409766,0.00396,0.004013,5000,3469
+insertion_level,within_quantifier,AlbertSalmon-Salmon,9,9,,0.217172,0.066978,0.130418,0.345493,0.004281,0.00396,5000,3469
+insertion_level,within_quantifier,AlbertEM-L1EM,9,8,5,0.01596,-0.015974,0.005633,0.025559,0.021137,0.004281,5000,3469
+deletion_probability,reference,AlbertSalmon-AlbertEM,5,5,,0.130303,0.129654,0.131508,0.138748,0.066781,0.067638,5000,3469
+deletion_probability,reference,AlbertSalmon-HTseq,5,5,,0.103646,0.093315,0.095798,0.099625,0.065925,0.066781,5000,3469
+deletion_probability,reference,AlbertSalmon-L1EM,5,5,,0.15147,0.148851,0.138233,0.149192,0.065069,0.065925,5000,3469
+deletion_probability,reference,AlbertSalmon-Salmon,5,5,,0.045198,0.044562,0.045539,0.043898,0.064213,0.065069,5000,3469
+deletion_probability,reference,AlbertSalmon-TEtranscripts,5,5,,0.042956,0.039503,0.041818,0.046385,0.063356,0.064213,5000,3469
+deletion_probability,within_quantifier,AlbertSalmon-Salmon,5,5,,0.044039,0.043434,0.0444,0.046864,0.068494,0.063356,5000,3469
+deletion_probability,within_quantifier,AlbertEM-L1EM,5,5,,0.011736,0.009764,0.010504,0.014643,0.067638,0.068494,5000,3469

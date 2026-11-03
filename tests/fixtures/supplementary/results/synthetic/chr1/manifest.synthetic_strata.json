@@ -1,0 +1,7 @@
+{
+  "seed": 3469,
+  "params": {
+    "reference": "AlbertSalmon",
+    "n_boot": 5000
+  }
+}

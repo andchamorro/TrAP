@@ -1,0 +1,7 @@
+correction,contrast,delta_r2,trap_wins
+net,AlbertSalmon-Salmon,0.107516,True
+net,AlbertEM-L1EM,0.053069,True
+published,AlbertSalmon-Salmon,0.082556,True
+published,AlbertEM-L1EM,0.033938,True
+recall_only,AlbertSalmon-Salmon,0.117351,True
+recall_only,AlbertEM-L1EM,0.07384,True
