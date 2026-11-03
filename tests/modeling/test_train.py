@@ -339,3 +339,66 @@ class TestAssertDatasetIdsInRange:
         )
         with pytest.raises(ValueError, match="max label=1 >= num_labels=1"):
             assert_dataset_ids_in_range(dd, vocab_size=10, num_labels=1, dataset_name="bad-cls")
+
+
+class TestDistillationComputeLoss:
+    """``DistillationTrainer.compute_loss`` must not depend on ``args.past_index``.
+
+    Recent ``transformers`` releases removed ``TrainingArguments.past_index``;
+    reading it unconditionally raised ``AttributeError`` on the first step.
+    """
+
+    @staticmethod
+    def _trainer(args):
+        torch = pytest.importorskip("torch")
+        pytest.importorskip("accelerate", reason="accelerate not installed")
+        from types import SimpleNamespace
+
+        from trap.modeling.train import DistillationTrainer
+
+        trainer = DistillationTrainer.__new__(DistillationTrainer)
+        trainer.args = args
+        trainer.model_accepts_loss_kwargs = False
+        trainer.temperature = 2.0
+        trainer.lambda_param = 0.5
+        trainer.loss_function = torch.nn.KLDivLoss(reduction="batchmean")
+        trainer.teacher = lambda **inputs: SimpleNamespace(logits=torch.zeros(2, 3))
+        return trainer
+
+    @staticmethod
+    def _student():
+        import torch
+        from types import SimpleNamespace
+
+        return lambda **inputs: SimpleNamespace(
+            logits=torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), loss=torch.tensor(0.7)
+        )
+
+    @pytest.mark.unit
+    def test_args_without_past_index(self):
+        from types import SimpleNamespace
+
+        import torch
+
+        trainer = self._trainer(SimpleNamespace(average_tokens_across_devices=False))
+        loss = trainer.compute_loss(self._student(), {})
+        assert torch.isfinite(loss) and loss.ndim == 0
+
+    @pytest.mark.unit
+    def test_past_index_still_stores_recurrent_state(self):
+        from types import SimpleNamespace
+
+        class _Out(SimpleNamespace):
+            def __getitem__(self, i):
+                return ("state", i)
+
+        import torch
+
+        trainer = self._trainer(
+            SimpleNamespace(average_tokens_across_devices=False, past_index=1)
+        )
+        student = lambda **inputs: _Out(  # noqa: E731
+            logits=torch.zeros(2, 3), loss=torch.tensor(0.7)
+        )
+        trainer.compute_loss(student, {})
+        assert trainer._past == ("state", 1)

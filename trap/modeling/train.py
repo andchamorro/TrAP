@@ -685,10 +685,11 @@ class DistillationTrainer(Trainer):
                 loss_kwargs["num_items_in_batch"] = num_items_in_batch
             inputs = {**inputs, **loss_kwargs}
         student_output = model(**inputs)
-        # Save past state if it exists
-        # TODO: this needs to be fixed and made cleaner later.
-        if self.args.past_index >= 0:
-            self._past = student_output[self.args.past_index]
+        # Keep the recurrent state when ``past_index`` is set.  Recent transformers
+        # releases dropped ``TrainingArguments.past_index``; without it there is none.
+        past_index = getattr(self.args, "past_index", -1)
+        if past_index >= 0:
+            self._past = student_output[past_index]
 
         with torch.no_grad():
             teacher_output = self.teacher(**inputs)
@@ -781,7 +782,6 @@ def masking(
     logger.info(f"'Custom Genomics AlBERT number of parameters: {round(model_num_parameters)}M'")
     logger.info("Original ALBERT number of parameters: 11M")
     logger.info("Original BERT number of parameters: 110M")
-    # TODO: arg.load_from_cache:
     logger.info("Loading pretokenized dataset")
     # preprocessing_sequences writes the chunked MLM dataset under masking/grouped
     lm_datasets, data_collator = load_masking_data(
@@ -941,7 +941,6 @@ def classification(
         else:
             logger.error("Path to the trainer config not exist.")
 
-    # TODO: arg.load_from_cache:
     logger.info("Loading pretokenized dataset")
     lm_datasets, label2id, id2label = load_classification_data(preprocessing_name)
     num_labels = len(id2label)
@@ -1183,7 +1182,6 @@ def distiller(
         else:
             logger.error("Path to the trainer config not exist.")
 
-    # TODO: arg.load_from_cache:
     logger.info("Loading pretokenized dataset")
     lm_datasets = load_from_disk(
         os.path.join(PROCESSED_DATA_DIR, preprocessing_name, "classification", "tokenized")
