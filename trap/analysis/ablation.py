@@ -1,7 +1,6 @@
 """k -> classification ablation: does a longer k-mer help the task?
 
-Reviewer 3 noted that an entropy plateau alone does not establish an *optimal*
-k-mer length for LINE-1 classification.  This module measures, directly, whether
+An entropy plateau alone does not establish an *optimal* k-mer length for LINE-1 classification.  This module measures, directly, whether
 increasing k improves the separability of the three task classes
 (``L1HS`` / ``L1PA`` / ``NEGATIVE``).
 

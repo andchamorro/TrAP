@@ -1,4 +1,4 @@
-"""Tests for trap.utils.labels (DR-2)."""
+"""Tests for trap.utils.labels."""
 import pytest
 from datasets import Dataset, DatasetDict, ClassLabel
 

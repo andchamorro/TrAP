@@ -47,7 +47,7 @@ from trap.utils.seeding import set_global_seed
 
 app = typer.Typer(add_completion=False, help="Salmon⊕SPM soft-vote ensemble (Track 3).")
 
-# Deployment class proportions (plan §0: ~89% NEGATIVE, ~10% L1PA, ~0.3% L1HS).
+# Deployment class proportions (~89% NEGATIVE, ~10% L1PA, ~0.3% L1HS).
 DEFAULT_PRIORS = {"NEGATIVE": 0.893, "L1PA": 0.104, "L1HS": 0.003}
 BASELINE_MACRO_F1 = 0.664
 

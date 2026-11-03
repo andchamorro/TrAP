@@ -1,4 +1,4 @@
-"""Model + tokenizer loading helpers shared across training and inference (DR-2).
+"""Model + tokenizer loading helpers shared across training and inference.
 
 Consolidates the repeated ``from_pretrained`` + ``post_processor`` boilerplate
 that previously appeared in ``train.py``, ``predict.py``, and

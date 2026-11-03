@@ -2,17 +2,17 @@
 
 This subpackage replaces the ad-hoc entropy/redundancy analysis behind the
 manuscript's Supplementary Figures 1-2 with a rigorous, reproducible, and
-extensible implementation that addresses the peer-review concerns:
+extensible implementation that addresses three concerns:
 
-* **Finite-sample bias** (Reviewer 1) — plug-in Shannon entropy underestimates
+* **Finite-sample bias** — plug-in Shannon entropy underestimates
   the true entropy, and a "plateau" can be an artefact of sampling saturation.
   :mod:`trap.analysis.entropy` provides the Miller-Madow and Chao-Shen
   bias-corrected estimators plus bootstrap confidence intervals, and
   :mod:`trap.analysis.kmer_counting` adds rarefaction (subsampling) curves so a
   true plateau can be distinguished from a sampling artefact.
-* **Operational definitions** (Reviewers 1-2) — entropy, redundancy, and the
+* **Operational definitions** — entropy, redundancy, and the
   empirical k-mer distribution are defined as code, not prose.
-* **Beyond the plateau** (Reviewer 3) — :mod:`trap.analysis.ablation` measures
+* **Beyond the plateau** — :mod:`trap.analysis.ablation` measures
   whether longer k-mers actually improve downstream L1HS/L1PA/NEGATIVE
   separability.
 

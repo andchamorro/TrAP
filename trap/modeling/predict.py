@@ -17,8 +17,8 @@ QW-10  TemplateProcessing no longer re-applied at runtime in quantify/*
 QW-11  break_long_read accepts an optional numpy Generator for seeded runs.
 QW-12  SAMDataset streams from pysam instead of loading the whole file into RAM.
 
-Phase-2 changes (DR-2)
------------------------
+Phase-2 changes
+---------------
 SAMDataset    → imported from trap.loaders.alignments (canonical module).
 break_long_read → imported from trap.utils.sequence (canonical module).
 standardize   → imported from trap.utils.sequence (strips N; k=17/v48 decision).

@@ -103,7 +103,7 @@ def filter_ids(
     Reads Parquet shards (``scores_*.parquet``) produced by ``quantify``.
     Falls back to the legacy ``class_scores.pkl`` if no Parquet files exist.
 
-    The Parquet path uses polars ``scan_parquet`` (DR-5) so no full file is
+    The Parquet path uses polars ``scan_parquet`` so no full file is
     loaded into RAM — the filter and ``id`` projection run lazily.  For legacy
     pickle files the IDs are joined by position from ``--fastq`` or
     ``--id-list``.
@@ -116,7 +116,7 @@ def filter_ids(
     parquet_files = sorted(glob.glob(str(output_path / "scores_*.parquet")))
 
     if parquet_files:
-        # DR-5: streaming polars path — no full load into RAM.
+        # Streaming polars path — no full load into RAM.
         try:
             import polars as pl
 

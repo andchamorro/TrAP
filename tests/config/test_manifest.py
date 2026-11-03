@@ -1,4 +1,4 @@
-"""Tests for trap.config.manifest (DR-7)."""
+"""Tests for trap.config.manifest."""
 import json
 from pathlib import Path
 

@@ -1,4 +1,4 @@
-"""Label analysis utilities for genomic classification datasets (DR-2).
+"""Label analysis utilities for genomic classification datasets.
 
 Previously ``analyze_labels`` lived in ``preprocessing_sequences.py``.
 Centralising it here lets R/Python notebooks import it directly.

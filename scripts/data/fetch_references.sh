@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fetch reference data for the TrAP Phase-3 re-do (plan §6.1 / §9.1) and build
+# Fetch reference data for the TrAP Phase-3 pipeline and build
 # the STAR + BWA indexes. No OneDrive coupling — everything comes from the
 # canonical GENCODE / EBI sources so the pipeline is reproducible from scratch.
 #

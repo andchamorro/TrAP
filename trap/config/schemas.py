@@ -1,4 +1,4 @@
-"""Typed configuration schemas (DR-4).
+"""Typed configuration schemas.
 
 Pydantic v2 models for ALBERT, trainer, tokenizer, dataset, and quantify
 configs.  Loaders write ``resolved_config.json`` next to every run output.
@@ -152,7 +152,7 @@ class TokenizerConfigSchema(BaseModel):
 
 
 class ARTConfigSchema(BaseModel):
-    """ART Illumina simulation parameters (§7 of reviewer-response export)."""
+    """ART Illumina simulation parameters (as reported in the Methods)."""
 
     coverage: int = 5
     read_length: int = 150
@@ -163,7 +163,7 @@ class ARTConfigSchema(BaseModel):
 
 
 class STARConfigSchema(BaseModel):
-    """STAR alignment parameters (§8 of reviewer-response export)."""
+    """STAR alignment parameters (as reported in the Methods)."""
 
     outFilterMultimapNmax: int = 100
     winAnchorMultimapNmax: int = 100

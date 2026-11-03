@@ -1,11 +1,12 @@
 """K-mer-level attribution for the L1 classifier + biological validation.
 
-Backs manuscript §2.6 ("Transformers Model Interpret") and answers reviewer
-**R2-Major-13**, which asked us to (1) state *precisely* how the "relevance
-scores" are computed — they are **Layer Integrated Gradients** (Sundararajan et
-al. 2017), *not* raw attention weights — and (2) map the top-attributed k-mers
-back to the L1HS/L1.3 consensus to check whether they cluster in functional
-domains (5'UTR promoter, ORF1, ORF2, ORF2 reverse-transcriptase).
+Backs manuscript §2.6 ("Transformers Model Interpret").  It does two things:
+(1) states *precisely* how the "relevance scores" are computed — they are
+**Layer Integrated Gradients** (Sundararajan et al. 2017), *not* raw attention
+weights — and (2) maps the top-attributed k-mers back to the L1HS/L1.3
+consensus to check whether they cluster in functional domains (5'UTR promoter,
+ORF1, ORF2, ORF2 reverse-transcriptase), so the attributions can be read
+biologically.
 
 Attribution method
 ------------------
@@ -16,7 +17,7 @@ from a ``[PAD]`` baseline (special tokens preserved) to the real input, then sum
 over the embedding dimension to give one signed attribution per token. Positive =
 pushes toward the predicted class; negative = pushes against it. We reproduce that
 exact quantity here with ``inputs_embeds`` interpolation (no ``captum`` runtime
-dependency; the computation is identical). For the contrast the reviewer asks for,
+dependency; the computation is identical). As a contrast,
 we also record the naive **last-layer self-attention received by each token**
 (head-averaged) — the "attention as importance" proxy that is *not* a reliable
 attribution — so the notebook can show the two rankings disagree.

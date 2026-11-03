@@ -13,7 +13,7 @@
 # recorded in the manifest instead of the directory name.
 #
 # Every synthetic script sources this file and calls experiment_dir / experiment_results_dir
-# so the mapping lives in ONE place (CLAUDE.md: do not duplicate). Sourcing idiom:
+# so the mapping lives in ONE place (docs/development/contributing.md). Sourcing idiom:
 #   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_synthetic_paths.sh"
 #   OUTPUT_DIR="${OUTPUT_DIR:-$(experiment_dir "${SIM_MODEL}" "${L1_SOURCE}" "${CHR}")}"
 

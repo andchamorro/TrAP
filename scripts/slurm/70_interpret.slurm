@@ -11,8 +11,8 @@
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --mail-type=END,FAIL
 #
-# Stage A of the model-interpretability analysis (manuscript §2.6; reviewer
-# R2-Major-13). Runs trap/analysis/interpret.py:
+# Stage A of the model-interpretability analysis (manuscript §2.6).
+# Runs trap/analysis/interpret.py:
 #   * per-token Layer Integrated Gradients (the attribution behind the "relevance
 #     scores" — NOT raw attention) over sampled L1HS/L1PA/NEGATIVE reads;
 #   * the naive last-layer attention proxy, recorded for the contrast panel;

@@ -1,4 +1,4 @@
-"""Per-run manifest writer (DR-7).
+"""Per-run manifest writer.
 
 Every CLI entry point calls ``write()`` on exit so that every output
 directory carries a ``manifest.json`` recording the git commit, seed,

@@ -1,10 +1,9 @@
-"""Is the NEGATIVE class behaving as a clean control? (Figure 13, R2-9)
+"""Is the NEGATIVE class behaving as a clean control? (Figure 13)
 
-Reviewer 2's ninth comment observes that the NEGATIVE class correlates with
-BWA LINE-1 counts at r = 0.75 for L1PA2, and concludes it "is not behaving as a
-clean control".  The manuscript's answer — that this "may reflect background
-composition" — is an unsupported hand-wave, and this module replaces it with
-tests that can come out either way.
+The NEGATIVE class correlates with BWA LINE-1 counts at r = 0.75 for L1PA2,
+which a clean control should not.  The manuscript's answer — that this "may
+reflect background composition" — is an unsupported hand-wave, and this module
+replaces it with tests that can come out either way.
 
 Three things get computed, and the order matters because the first two were
 expected to exonerate the NEGATIVE class and do not:
@@ -19,8 +18,8 @@ expected to exonerate the NEGATIVE class and do not:
 3. :func:`leakage_rates` — the mechanism, read off the subfamily confusion
    table: roughly a third of genuine L1HS and L1PA reads are assigned to
    NEGATIVE at the operating point.  A class containing that much LINE-1 *must*
-   correlate with LINE-1 abundance, so the reviewer's reading is correct and the
-   correlation needs no exotic explanation.
+   correlate with LINE-1 abundance, so the class is indeed not a clean control and
+   the correlation needs no exotic explanation.
 
 A fourth covariate, chromosome length, is computed by
 :func:`chrom_length_correlations` under its own command and written to its own

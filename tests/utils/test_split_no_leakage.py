@@ -1,4 +1,4 @@
-"""DR-6 correctness: stratified transcript-level splits preserve leakage constraints."""
+"""Stratified transcript-level splits preserve the no-leakage constraint."""
 import pytest
 from collections import Counter
 from datasets import ClassLabel, Dataset

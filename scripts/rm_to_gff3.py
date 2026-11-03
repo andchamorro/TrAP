@@ -2,7 +2,7 @@
 """Convert RepeatMasker .out output to GFF3 for the TrAP LINE-1 detection pipeline.
 
 Parses NCBI RepeatMasker native .out / .out.gz format and emits GFF3 with
-``Target=<name>`` attributes consumed by ``scripts/divide_gff.py`` (plan §6.2).
+``Target=<name>`` attributes consumed by ``scripts/divide_gff.py``.
 Called by ``scripts/data/fetch_references.sh`` to produce REPEATMASKER_GFF.
 
 NCBI RepeatMasker .out chromosome names use RefSeq accessions (e.g.

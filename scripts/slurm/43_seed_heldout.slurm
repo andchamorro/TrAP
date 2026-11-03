@@ -13,7 +13,7 @@
 #SBATCH --error=logs/%x_%A_%a.err
 #
 # Stage 43 — score each stage-42 seed replicate on the HELD-OUT split, so the
-# Reviewer 3 Comment 5 stability table reports held-out metrics rather than the
+# seed-stability table reports held-out metrics rather than the
 # per-epoch ones. This stage is necessary, not redundant: the training config
 # sets dataloader_persistent_workers=true, so each replicate's own
 # eval_results.json carries the per-epoch split (the stage-40 cache defect), and

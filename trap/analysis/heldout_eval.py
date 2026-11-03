@@ -1,4 +1,4 @@
-"""Held-out split evaluation for the reported classifier (Reviewer 3, Comment 3).
+"""Held-out split evaluation for the reported classifier.
 
 Why this exists
 ---------------
@@ -17,8 +17,8 @@ and ``eval_loss`` are bit-identical to the best per-epoch entry in
 count because ``train.py`` overwrites it with ``len(lm_datasets["eval"])``.
 
 This module scores a named split once, from a finished checkpoint, with the
-cache disabled, and writes the per-class table plus the confusion matrix that
-Reviewer 3 asked for.  It trains nothing.
+cache disabled, and writes the per-class table plus the confusion matrix (Table
+S1).  It trains nothing.
 
 Metric definitions are imported from ``trap.modeling.train`` so the numbers are
 comparable with the reported training-time metrics rather than merely similar.

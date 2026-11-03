@@ -57,7 +57,7 @@ app = typer.Typer(
     add_completion=False, help="Decision-boundary & calibration optimisation (Track 1)."
 )
 
-BASELINE_MACRO_F1 = 0.664  # Salmon argmax deploy baseline (plan §0).
+BASELINE_MACRO_F1 = 0.664  # Salmon argmax deploy baseline (macro-F1).
 
 
 # --------------------------------------------------------------------------- #
@@ -139,7 +139,7 @@ def predict_weighted(probs: np.ndarray, weights: np.ndarray) -> np.ndarray:
 
     Equal weights reproduce the plain argmax baseline. Raising a class weight
     lowers that class's effective decision threshold (more recall, less
-    precision); this is the cost-sensitive boundary of plan §2.2.
+    precision); this is a cost-sensitive decision boundary.
     """
     return np.asarray(probs * np.asarray(weights)[None, :]).argmax(axis=1)
 
@@ -243,7 +243,7 @@ def sweep_negative_threshold(
 def scorecard(labels: np.ndarray, predictions: np.ndarray, classes: List[str]) -> Dict[str, float]:
     """Per-class P/R/F1 + macro-F1 + L1PA<->NEGATIVE confusion cells.
 
-    Returns a flat dict (the single comparable scorecard of plan §8) with keys
+    Returns a flat dict (one comparable scorecard per decision rule) with keys
     ``macro_f1``, ``precision_<CLASS>``/``recall_<CLASS>``/``f1_<CLASS>``,
     ``support_<CLASS>`` and ``cm_<TRUE>_as_<PRED>``.
     """
@@ -524,7 +524,7 @@ def _beta_reweighted(probs: np.ndarray, pa_index: Optional[int], beta: float) ->
     The weight optimiser maximises macro-F1 on the supplied probabilities; an
     ``Fβ>1`` preference for L1PA recall is expressed by nudging the L1PA column
     up by ``beta`` before the search, which biases the chosen weights toward
-    recovering L1PA reads lost to NEGATIVE (plan §2.2). ``beta==1`` is a no-op.
+    recovering L1PA reads lost to NEGATIVE. ``beta==1`` is a no-op.
     """
     if pa_index is None or beta == 1.0:
         return probs

@@ -1,16 +1,15 @@
-"""Class imbalance: what was done about it, and how the deficit propagates (R2-5).
+"""Class imbalance: what was done about it, and how the deficit propagates.
 
-Reviewer 2's fifth comment asks three things — whether mitigation was explored,
-how big the imbalance really is, and how the L1HS recall deficit propagates into
-abundance estimates.  The first two are documentation; the third is an analysis
-that had been promised in the response letter without being computed, and is the
-substance of this module.
+Three questions follow from a 40:1 class imbalance — whether mitigation was
+explored, how big the imbalance really is, and how the L1HS recall deficit
+propagates into abundance estimates.  The first two are documentation; the third
+is an analysis, and is the substance of this module.
 
 **The imbalance.** :func:`imbalance_ratios` reports the training-split counts
-alongside the all-splits totals, because the reviewer quoted the all-splits L1HS
-count (99,779) as a training count (60,639).  Worth noting in the response that
-their *ratio* is right either way — 40.2:1 on the training split, 40.7:1 across
-all splits — so this is a labelling correction, not a correction to their point.
+alongside the all-splits totals, because the two are easily confused: the
+all-splits L1HS count is 99,779 and the training count 60,639.  The *ratio* is
+nearly the same either way — 40.2:1 on the training split, 40.7:1 across
+all splits.
 
 **The mitigation.** :func:`balanced_class_weights` reproduces the weight vector
 the reported model was actually trained with, from

@@ -1,8 +1,7 @@
-"""Drift guard for the reported baseline settings (R2-6).
+"""Drift guard for the reported baseline settings (Table 3).
 
-`config/baselines/baseline_settings.yaml` is quoted directly in the response
-letter and will become a supplementary table, so a silent edit to any pipeline
-script would make a published statement false.  These tests assert that every
+`config/baselines/baseline_settings.yaml` is the source of Table 3, so a silent
+edit to any pipeline script would make a published statement false.  These tests assert that every
 flag the YAML claims is still present in the script it names.
 
 The guard is not hypothetical: transcribing these settings by hand produced a
@@ -94,7 +93,7 @@ def test_the_two_star_alignments_are_distinct(settings):
     assert bench["outFilterMultimapNmax"] == 1000
     assert label["outFilterMultimapNmax"] != bench["outFilterMultimapNmax"]
     # winAnchorMultimapNmax is set for labelling only; asserting its absence
-    # from the benchmark alignment keeps the response from re-acquiring it.
+    # from the benchmark alignment keeps the reported settings from re-acquiring it.
     assert "winAnchorMultimapNmax" in label
     assert "winAnchorMultimapNmax" not in bench
     align_script = (
@@ -104,7 +103,7 @@ def test_the_two_star_alignments_are_distinct(settings):
 
 
 def test_every_alignment_dependent_method_shares_one_bam(settings):
-    """R2-6's fairness premise: no comparator gets its own alignment."""
+    """The fairness premise: no comparator gets its own alignment."""
     methods = settings["synthetic_benchmark"]["methods"]
     alignment_dependent = {"HTSeq", "TEtranscripts", "L1EM"}
     named = {m["name"] for m in methods}
@@ -145,7 +144,7 @@ def test_no_multimapping_sensitivity_run_is_outstanding(settings):
 
 
 def test_every_alignment_dependent_comparator_retains_multimappers(settings):
-    """R2-6's requested condition, asserted as a property of the settings file."""
+    """Multi-mapping reads are retained, asserted as a property of the settings file."""
     for method in settings["synthetic_benchmark"]["methods"]:
         if method["name"] in {"HTSeq", "TEtranscripts", "L1EM"}:
             assert (

@@ -1,16 +1,16 @@
 """Quantitative k-mer length selection criterion.
 
 Replaces "the entropy curve plateaus by eye" with three explicit, reproducible
-gates that together answer the reviewers:
+gates:
 
-1. **Saturation gate (R1)** — the bias-corrected entropy at a given k must be
+1. **Saturation gate** — the bias-corrected entropy at a given k must be
    stable as the corpus grows: the relative change between the ~50% and 100%
    subsample is below ``epsilon``.  A k whose entropy is still climbing with N is
    in the under-sampled regime, so any "plateau" there is a sampling artefact.
-2. **Marginal-gain gate (R1/R2)** — diminishing returns begin at the first k
+2. **Marginal-gain gate** — diminishing returns begin at the first k
    whose per-step information gain ``dH_k = H_k - H_{k-1}`` (bias-corrected)
    falls below ``tau`` bits.
-3. **Task gate (R3)** — the smallest k whose downstream macro-F1 is
+3. **Task gate** — the smallest k whose downstream macro-F1 is
    statistically indistinguishable from the best (within one CV std).
 
 The recommendation is reported with every gate value and a plain-language

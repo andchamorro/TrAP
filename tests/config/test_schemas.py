@@ -1,4 +1,4 @@
-"""Tests for trap.config.schemas (DR-4)."""
+"""Tests for trap.config.schemas."""
 import json
 
 import pytest

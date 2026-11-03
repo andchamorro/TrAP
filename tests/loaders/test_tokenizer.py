@@ -52,7 +52,7 @@ class TestTrainWordpieceSignature:
 
 
 class TestTokenizerTrainCLI:
-    """The `train` sub-command (plan §6.1) end-to-end on a tiny corpus."""
+    """The `train` sub-command end-to-end on a tiny corpus."""
 
     @pytest.mark.integration
     def test_train_writes_tokenizer_and_manifest(self, tmp_path):

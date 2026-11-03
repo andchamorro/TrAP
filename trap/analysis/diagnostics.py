@@ -517,7 +517,7 @@ def dataset(
                     if overlap:
                         _fail(
                             f"Train/test transcript leakage: {len(overlap):,} transcript IDs "
-                            "appear in both splits (DR-6 violation)"
+                            "appear in both splits (the transcript-level split was not applied)"
                         )
                     else:
                         _pass(
@@ -528,7 +528,7 @@ def dataset(
                     _warn(
                         "Transcript leakage check skipped: tokenised classification dataset "
                         "has no transcript_id column. Rebuild stage 20 with the 2026-06-04 "
-                        "preprocessing fix to enable the DR-6 check."
+                        "preprocessing fix to enable the transcript-leakage check."
                     )
 
             # Sequence length stats

@@ -1,12 +1,13 @@
-# Seed replicates for the Reviewer 3, Comment 5 stability analysis.
+# Seed replicates for the classifier stability analysis (are the results stable
+# across random seeds?).
 #
 # The run of record uses seed 3469 (config/training/classification_final.json).
 # The seven below are additional, giving EIGHT training runs in total.
 #
 # They are deliberately scattered across the 32-bit range rather than
 # consecutive: consecutive seeds are a weaker probe of initialisation and
-# shuffling variance, and a reviewer can reasonably ask why 3470-3476 were
-# chosen. Reproducible derivation (numpy 2.x):
+# shuffling variance, and consecutive seeds such as 3470-3476 would need a
+# justification of their own. Reproducible derivation (numpy 2.x):
 #
 #   rng = np.random.default_rng(20261020)
 #   seeds = []

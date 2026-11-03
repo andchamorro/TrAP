@@ -54,7 +54,7 @@ def test_imbalance_ratios_cover_every_split(composition_path):
     assert ratios.loc["Training", "ratio"] == pytest.approx(2439877 / 60639)
     assert ratios.loc["Training", "minority_frequency"] == pytest.approx(60639 / 4662416)
     # The training ratio and the all-splits ratio must both be reported, since
-    # the reviewer quoted the all-splits count as a training count.
+    # the all-splits count is easily mistaken for the training count.
     assert {"Training", "Total"} <= set(ratios.index)
 
 

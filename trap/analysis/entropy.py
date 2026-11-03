@@ -9,8 +9,8 @@ The plug-in (maximum-likelihood) Shannon entropy systematically *under*
 estimates the true entropy in the under-sampled regime where the number of
 possible k-mers (``4**k``) approaches or exceeds the number of observed
 positions ``N``.  This is exactly the regime that produced the manuscript's
-apparent entropy "plateau" for large ``k`` and the reviewer concern that it may
-reflect sampling saturation rather than a true information plateau.  Two
+apparent entropy "plateau" for large ``k``, which may reflect sampling
+saturation rather than a true information plateau.  Two
 bias-corrected estimators are provided:
 
 * **Miller-Madow** — a first-order analytic correction

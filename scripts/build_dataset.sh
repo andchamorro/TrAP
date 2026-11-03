@@ -1,8 +1,8 @@
 #!/bin/bash
 # Build the labelled paired-end L1 FASTQ for the TrAP classification dataset
-# (plan §6.2). Refactor of the old scripts/generate_dataset.sh: parameterised
-# paths (no /path/to placeholders), ART coverage -f 5 (fix S1), STAR multimap
-# 100 (S5), and the now-present scripts/divide_gff.py (S4).
+# Refactor of the old scripts/generate_dataset.sh: parameterised paths (no
+# /path/to placeholders), ART coverage -f 5, STAR multimap 100, and the
+# now-present scripts/divide_gff.py.
 #
 # Pipeline:  ART (simulate) -> STAR (align) -> samtools (sort by name)
 #            -> divide_gff.py (per-subfamily GFF) -> bedtools pairtobed (label)

@@ -10,7 +10,7 @@
 #SBATCH --mail-type=END,FAIL
 #
 # Stage 0 — fetch GENCODE v48 transcripts + GRCh38.p14 and build STAR/BWA
-# indexes (plan §6.1 / §9.1). Run from the repo root: `sbatch scripts/slurm/00_fetch_references.slurm`.
+# indexes. Run from the repo root: `sbatch scripts/slurm/00_fetch_references.slurm`.
 
 source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"
 load_bio_modules

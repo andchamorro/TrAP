@@ -25,7 +25,8 @@ drift apart:
    confidence intervals on ΔR² between methods, resampling loci (not residuals)
    so both fits see the same resample.
 
-The orthogonal-annotation question (R2-1) is answered with three L1Base2
+The orthogonal-annotation question (is the benchmark independent of the
+RepeatMasker annotation the comparators share?) is answered with three L1Base2
 tracks rather than one: :data:`L1BASE_TRACKS` registers the ORF-intact sets
 (FLI, ORF2 — membership decided by sequence-level ORF criteria, so genuinely
 independent of the repeat annotation) and the much larger full-length set
@@ -41,8 +42,8 @@ range, which is what makes the pooled-unit caveat concrete.
 
 The primary analysis for the revision is :data:`PRIMARY_LOCUS_SET` — the common
 locus set intersected with reference-detected loci (``race5 > 0``) — a matched
-set of identical size for every method, which is the comparison the reviewers
-actually asked for.  The published filter and its values are retained
+set of identical size for every method, so every method is compared on the
+same loci.  The published filter and its values are retained
 unchanged; this is added material, not a replacement.
 """
 
@@ -75,8 +76,8 @@ VALUE_MAX_RPM = 10.0
 DOMINANT_LOCUS = "chr22:28663283-28669315"
 
 #: The locus circled in the published panels.  It is ``argmax |value - pred|``
-#: — the largest residual — so removing it *raises* every R².  Reviewers read
-#: it as the influential point; it is not.
+#: — the largest residual — so removing it *raises* every R².  It reads like
+#: the influential point; it is not.
 MAX_RESIDUAL_LOCUS = "chr1:174843226-174849243"
 
 #: Only L1HS and L1PA2 targets with a non-zero category are in the benchmark.
@@ -129,7 +130,7 @@ class L1BaseTrack(NamedTuple):
 
 #: L1Base2 (Ens84.38) tracks, in decreasing order of annotation independence.
 #:
-#: Only FLI and ORF2 are orthogonal in the sense R2-1 means: membership turns
+#: Only FLI and ORF2 are orthogonal to the repeat annotation: membership turns
 #: on ORF intactness — conserved ORF1/ORF2 reading frames, intactness score —
 #: which is judged from the sequence and not from a repeat annotation.  FLnI
 #: membership turns on *length* (>4500 nt) over RepeatMasker-derived intervals
@@ -397,7 +398,7 @@ def locus_subset(wide: pd.DataFrame, locus_set: str, method: str) -> pd.DataFram
 
 
 def filter_definition_grid(wide: pd.DataFrame, methods: Sequence[str] = METHODS) -> pd.DataFrame:
-    """Fit every method under every locus-set definition (answers R2-2).
+    """Fit every method under every locus-set definition (filter sensitivity).
 
     Args:
         wide: Table from :func:`load_locus_table`.
@@ -469,7 +470,7 @@ def leave_one_out(
 ) -> pd.DataFrame:
     """Refit after dropping the leverage locus, the circled locus, and both.
 
-    This is the analysis that separates the two points reviewers conflate.
+    This is the analysis that separates two points that are easily conflated.
     Dropping :data:`DOMINANT_LOCUS` lowers R² for *every* method by a similar
     amount — the benchmark's dynamic range depends on it, but no method's
     advantage does.  Dropping :data:`MAX_RESIDUAL_LOCUS` *raises* every R²,
@@ -519,7 +520,7 @@ def bootstrap_delta_r2(
     restrict_to: Set[str] | None = None,
     restriction_name: str = "none",
 ) -> pd.DataFrame:
-    """Paired percentile bootstrap confidence intervals on ΔR² (answers R2-3).
+    """Paired percentile bootstrap confidence intervals on ΔR² (a formal test).
 
     Loci are resampled with replacement and **both** methods are refit on the
     same resample, so the interval is on the paired difference rather than on
@@ -704,7 +705,7 @@ def l1base_overlap_counts(
     elements: pd.DataFrame,
     methods: Sequence[str] = METHODS,
 ) -> pd.DataFrame:
-    """Count benchmark loci overlapping each L1Base2 track (answers R2-1).
+    """Count benchmark loci overlapping each L1Base2 track (orthogonal annotation).
 
     Args:
         wide: Table from :func:`load_locus_table`.
@@ -774,7 +775,7 @@ def l1base_restricted_fits(
     locus_set: str = PRIMARY_LOCUS_SET,
     methods: Sequence[str] = METHODS,
 ) -> pd.DataFrame:
-    """Refit the benchmark on L1Base-restricted locus sets (answers R2-1).
+    """Refit the benchmark on L1Base-restricted locus sets (orthogonal annotation).
 
     Each restriction is intersected with *locus_set*, so the comparison stays
     matched across methods, and is reported both whole and without its own

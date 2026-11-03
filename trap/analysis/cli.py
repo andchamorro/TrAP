@@ -74,7 +74,7 @@ from trap.config.schemas import KmerSpectrumConfigSchema, load_config
 from trap.config.verbosity import set_verbosity
 from trap.utils.seeding import set_global_seed
 
-app = typer.Typer(help="Entropy/redundancy k-mer length analysis (reviewer re-do).")
+app = typer.Typer(help="Entropy/redundancy k-mer length analysis and the manuscript analyses.")
 
 _SPECTRUM_SORT = ["corpus", "k", "subsample_frac", "replicate"]
 
@@ -406,7 +406,7 @@ def negative_control_cmd(
     out: Path = typer.Option(Path("results/srr4099955")),
     verbosity: str = typer.Option("normal"),
 ) -> None:
-    """Test whether the NEGATIVE class is a clean control (R2-9, Figure 13)."""
+    """Test whether the NEGATIVE class is a clean control (Figure 13)."""
     set_verbosity(verbosity)
     logger.log("STAGE", f"[negative-control] {by_chrom} -> {out}")
     cm = confusion if confusion and confusion.exists() else None
@@ -452,7 +452,7 @@ def chrom_length_cmd(
     out: Path = typer.Option(Path("results/srr4099955")),
     verbosity: str = typer.Option("normal"),
 ) -> None:
-    """Adjust the Figure 13 correlations for chromosome length (R2-9).
+    """Adjust the Figure 13 correlations for chromosome length.
 
     Deliberately a separate command from ``negative-control``: it needs only
     the aggregation and the assembly, so it runs anywhere, and it writes one
@@ -586,7 +586,7 @@ def enrichment_clustered_cmd(
     out: Path = typer.Option(Path("results/interpret")),
     verbosity: str = typer.Option("normal"),
 ) -> None:
-    """Re-test the attribution enrichment with the read as the unit (R3, C9).
+    """Re-test the attribution enrichment with the read as the unit.
 
     The published Fisher interval assumes independent k-mers; this replaces it
     with a read-clustered one and reports the design effect, so the inflation is
@@ -638,7 +638,7 @@ def seed_summary_cmd(
     out: Path = typer.Option(Path("results/seeds")),
     verbosity: str = typer.Option("normal"),
 ) -> None:
-    """Aggregate the seed replicates into the stability table (R3, Comment 5).
+    """Aggregate the seed replicates into the stability table.
 
     Reads each replicate's ``heldout_summary.eval.*.json`` and reports mean, sd
     and range per metric, with the run of record shown alongside so the reader
@@ -727,7 +727,7 @@ def model_params_cmd(
     out: Path = typer.Option(Path("results/model_params")),
     verbosity: str = typer.Option("normal"),
 ) -> None:
-    """Count the reported classifier's parameters, with a manifest (R3, Minor).
+    """Count the reported classifier's parameters, with a manifest.
 
     The Methods quote a parameter count, so it must come from the checkpoint of
     record rather than from a hand tally of the config. Two independent counts are

@@ -1,7 +1,7 @@
 """Unit tests for the entropy/redundancy estimators.
 
 Each estimator is checked against an analytically known value, plus the
-edge cases the reviewers care about (under-sampling, degeneracy, empty input)
+edge cases that matter for k selection (under-sampling, degeneracy, empty input)
 and the determinism guarantee for the bootstrap CI.
 """
 

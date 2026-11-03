@@ -11,7 +11,7 @@
 # NOTE: the effective time/mem/cpus are set in config/runs/default.yaml (stage 20)
 # and injected as sbatch CLI flags by submit_pipeline.sh, overriding these headers.
 #
-# Stage 2 — dataset preprocessing (plan §6.2):
+# Stage 2 — dataset preprocessing:
 #   (a) ART -> STAR -> bedtools -> labelled paired L1 FASTQ (bio tools)
 #   (b) classification dataset (transcript-level split) from the L1 FASTQ
 #   (c) MLM masking dataset from GENCODE transcripts (for stage 3)

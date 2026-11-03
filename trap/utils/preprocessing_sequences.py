@@ -1,13 +1,13 @@
-"""Dataset preprocessing for MLM and classification tasks (DR-3, DR-6).
+"""Dataset preprocessing for MLM and classification tasks.
 
 Changes from the argparse version
 ----------------------------------
-DR-3  Converted to Typer: ``python -m trap.utils.preprocessing_sequences
-      {masking,classification} --config …``.
-DR-6  Added ``--split-strategy transcript-level`` (default): groups reads by
-      transcript ID *before* splitting, so no transcript contributes reads to
-      both training and eval/test splits (reviewer §12/#15 leakage fix).
-      Pass ``--split-strategy read-level`` to restore the previous behaviour.
+* Typer CLI: ``python -m trap.utils.preprocessing_sequences
+  {masking,classification} --config …``.
+* ``--split-strategy transcript-level`` (default): groups reads by transcript ID
+  *before* splitting, so no transcript contributes reads to both training and
+  eval/test splits; reads of one transcript overlap, so a read-level split leaks.
+  Pass ``--split-strategy read-level`` to restore the previous behaviour.
 
 Label extraction
 ----------------
@@ -126,7 +126,7 @@ def _resolve_fragment_labels(
 
 
 # ---------------------------------------------------------------------------
-# Transcript-level GroupShuffleSplit (DR-6)
+# Transcript-level GroupShuffleSplit (no read-level leakage)
 # ---------------------------------------------------------------------------
 
 
@@ -147,7 +147,7 @@ def _transcript_level_split(
     """Stratified transcript-level split that prevents read-level leakage.
 
     All reads from the same source transcript stay in one split (no read-level
-    leakage, DR-6). Transcripts are grouped by their *dominant* label (most
+    leakage). Transcripts are grouped by their *dominant* label (most
     frequent class among that transcript's reads) and each group is allocated
     proportionally, so rare classes like L1HS are represented in every split
     rather than landing by chance in a single one.
@@ -386,7 +386,7 @@ def dataset_loader(
         val_split: Fraction for the validation set; ``None`` → skip.
         class_threshold: Minimum reads per class; classes below are dropped.
         num_proc: Worker count for ``Dataset.filter``.
-        split_strategy: ``"transcript-level"`` (default, DR-6) or
+        split_strategy: ``"transcript-level"`` (default, leakage-free) or
             ``"read-level"`` (legacy; retains read-level leakage).
         label_fn: Maps a record id to its label. Defaults to the raw subfamily
             label; classification passes ``task_label`` for the 3-class collapse.
@@ -527,7 +527,7 @@ def dataset_loader(
 
 
 # ---------------------------------------------------------------------------
-# Typer commands (DR-3)
+# Typer commands
 # ---------------------------------------------------------------------------
 
 
@@ -553,7 +553,7 @@ def masking(
     num_proc: int = typer.Option(32, help="Parallel workers"),
     split_strategy: str = typer.Option(
         "transcript-level",
-        help="'transcript-level' (default, DR-6) or 'read-level' (legacy)",
+        help="'transcript-level' (default, leakage-free) or 'read-level' (legacy)",
     ),
     seed: int = typer.Option(3469, help="Global RNG seed"),
     verbosity: str = typer.Option(
@@ -714,7 +714,7 @@ def classification(
     num_proc: int = typer.Option(32, help="Parallel workers"),
     split_strategy: str = typer.Option(
         "transcript-level",
-        help="'transcript-level' (default, DR-6) or 'read-level' (legacy)",
+        help="'transcript-level' (default, leakage-free) or 'read-level' (legacy)",
     ),
     collapse_task_labels: bool = typer.Option(
         True,
@@ -792,7 +792,7 @@ def classification(
     is_salmon = isinstance(tokenizer, SalmonKmerTokenizer)
     if pair is not None:
         # Keep transcript_id in the tokenised dataset so stage 21 can verify
-        # train/test transcript disjointness (DR-6 leakage check); training drops
+        # train/test transcript disjointness (leakage check); training drops
         # it in train.load_classification_data so the collator never sees it.
         remove_cols = ["read_1", "read_2"]
 

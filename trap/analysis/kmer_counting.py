@@ -14,7 +14,7 @@ Two design choices address the peer review directly:
 * **Rarefaction by sequence count** — for each subsample fraction we count
   k-mers over a deterministic, *nested* subset of sequences (a fixed seeded
   permutation, truncated).  Comparing entropy across fractions reveals whether a
-  high-``k`` plateau is real or an artefact of finite sampling (Reviewer 1).
+  high-``k`` plateau is real or an artefact of finite sampling.
 
 Sequences are streamed forward-strand only (we do **not** reuse
 :class:`trap.loaders.dataset.GenomeDataset`, which also materialises every

@@ -1,7 +1,7 @@
 """Thin orchestration wrapper for the Phase-3 training reproduction pipeline.
 
 The real work lives in per-stage SLURM scripts under ``scripts/slurm/``; this
-module (plan §6) only lists the stages and shells out to
+module only lists the stages and shells out to
 ``scripts/slurm/submit_pipeline.sh`` to submit them as an
 ``sbatch --dependency=afterok`` chain on Grace.  No compute happens here.
 

@@ -1,16 +1,16 @@
-# Baseline settings of record — IJMS revision, Reviewer 2 comment 6.
+# Baseline settings of record (Table 3).
 #
-# "A fair comparison would require tuning each tool's multi-mapping parameters to
-# its recommended settings for LINE-1 quantification, and reporting those
-# settings."  This file is the reported settings: every flag below is the one the
+# A fair comparison requires each tool's multi-mapping parameters at its
+# recommended settings for LINE-1 quantification, and those settings reported.
+# This file is the reported settings: every flag below is the one the
 # named script actually passes, transcribed from that script rather than from
 # memory or from the manuscript.
 #
 # It is machine-checked.  `tests/analysis/test_baseline_settings.py` asserts that
 # each `assert_flags` entry still appears in the script named beside it, so if a
-# script is edited the test fails and this file — and the response letter that
+# script is edited the test fails and this file — and every document that
 # quotes it — get re-checked.  That guard exists because transcribing these by
-# hand already produced one error: the response letter attributed the
+# hand already produced one error: a hand transcription attributed the
 # training-label alignment's `--outFilterMultimapNmax 100 --winAnchorMultimapNmax
 # 100` to the TEtranscripts input, which actually received
 # `--outFilterMultimapNmax 1000 --outSAMprimaryFlag AllBestScore`.  The two
@@ -18,7 +18,7 @@
 #
 # Every alignment-dependent comparator retains multi-mapping reads: HTSeq with
 # --nonunique all, TEtranscripts with --mode multi, L1EM through its own
-# candidate-enumeration and EM.  R2-6's requested condition is therefore met for
+# candidate-enumeration and EM.  The multi-mapping condition is therefore met for
 # all of them, and no sensitivity run is outstanding.
 #
 # Tool versions.  Module versions are pinned in scripts/slurm/_common.sh and are
@@ -255,8 +255,8 @@ hek293_5race_benchmark:
       Produces the 5'RACE reference signal (race5), not a comparator estimate.
 
 # ---------------------------------------------------------------------------
-# Bounded sensitivity runs that would answer R2-6's strongest version.  Not run:
-# they require Grace and the response does not depend on them (plan section 3.4).
+# Bounded sensitivity runs for the strictest form of the multi-mapping
+# question.  Not run: they require Grace and no reported result depends on them.
 # ---------------------------------------------------------------------------
 sensitivity_runs:
   - tool: HTSeq

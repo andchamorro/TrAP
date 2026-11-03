@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Split a RepeatMasker GFF into one GFF per repeat subfamily.
 
-Used by ``scripts/build_dataset.sh`` (plan §6.2 / fix S4): each output file
+Used by ``scripts/build_dataset.sh``: each output file
 ``<outdir>/<subfamily>.gff`` is intersected with the aligned BAM via
 ``bedtools pairtobed`` so reads can be labelled by subfamily (L1HS, L1PA2, …).
 

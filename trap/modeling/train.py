@@ -121,7 +121,7 @@ def make_compute_classification_metrics(id2label: Optional[dict] = None):
     Selection metric: ``f1`` stays **macro**-averaged (unweighted mean over
     classes) so ``metric_for_best_model="f1"`` rewards minority-class recovery,
     not a NEGATIVE-collapsed classifier (micro-F1 == accuracy here). Matches the
-    macro-F1 acceptance target (plan §7.4).
+    macro-F1 acceptance target.
 
     Aggregate keys (HF prefixes each with ``eval_`` and logs to
     ``trainer_state.json``): ``accuracy`` (overall/micro), macro/weighted
@@ -1038,7 +1038,7 @@ def classification(
 
     compute_metrics = make_compute_classification_metrics(id2label=id2label)
 
-    # Class-weighted loss to counter the NEGATIVE-dominated split (plan §6/§7.4).
+    # Class-weighted loss to counter the NEGATIVE-dominated split.
     # WeightedLossTrainer with class_weights=None is the unweighted default.
     class_weights = None
     if class_weighting:

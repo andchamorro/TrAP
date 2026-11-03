@@ -31,7 +31,7 @@ canonical: false
 chunk_size: 2000
 seed: 3469
 
-# k -> classification ablation (Reviewer 3).
+# k -> classification ablation (does a longer k help the task?).
 ablation_reads: data/external/l1hs_l1pa2_negative.5x_sample_R1.fq
 ablation_max_per_class: 5000
 ablation_n_features: 262144

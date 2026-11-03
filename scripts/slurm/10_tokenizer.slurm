@@ -10,7 +10,7 @@
 #SBATCH --mail-type=END,FAIL
 #
 # Stage 1 — BPE k-mer tokenizer (k=17, vocab=32k) on GENCODE v48 transcripts
-# (plan §6.1). Bakes the paired template + writes a manifest.
+# Bakes the paired template + writes a manifest.
 # Algorithm override: TOKENIZER_ALGORITHM=unigram sbatch ... (slower, suffix-array based)
 #
 # Debug mode (fast smoke-test, completes in <60s):

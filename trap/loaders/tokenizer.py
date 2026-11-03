@@ -1106,7 +1106,7 @@ def train(
     ),
     ctx: typer.Context = typer.Option(None, hidden=True),
 ):
-    """Train a k-mer tokenizer (SentencePiece Unigram or WordPiece) — plan §6.1.
+    """Train a k-mer tokenizer (SentencePiece Unigram or WordPiece).
 
     Loads the corpus via ``GenomeDataset`` (sequences standardized to pure ACTG,
     uppercase), trains on space-separated k-mers, bakes the paired

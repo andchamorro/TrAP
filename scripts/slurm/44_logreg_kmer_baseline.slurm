@@ -10,7 +10,7 @@
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --mail-type=END,FAIL
 #
-# Stage 44 — EXPLORATION ONLY (Reviewer 3, Comment 4). Multinomial logistic
+# Stage 44 — EXPLORATION ONLY (simpler-model reference point). Multinomial logistic
 # regression on hashed canonical 17-mer counts, trained on the same split as the
 # model of record and scored on the same held-out split.
 #

@@ -1,12 +1,11 @@
 """Domain enrichment of top-attribution k-mers, including the ORF0 footprint.
 
-Reviewer 2's tenth comment points at an inconsistency: the manuscript calls ORF0
-"a primate-specific 5'UTR feature present within the L1HS/L1PA sequences
-analyzed here", then reports no enrichment in ORF0.  The inconsistency is
-sharper than the reviewer could see from outside — **there was no ORF0 bin.**
+ORF0 is a primate-specific 5'UTR feature present within the L1HS/L1PA sequences
+analysed here, so its enrichment has to be tested explicitly — and the original
+domain binning had **no ORF0 bin.**
 ``results/interpret/domain_enrichment.csv`` has eight rows (5UTR, ORF1,
 interORF, ORF2_EN, ORF2_mid, ORF2_RT, ORF2_C, 3UTR) and none of them is ORF0, so
-the published sentence reported a result that had never been computed.
+an ORF0 result could not have come from it.
 
 This module computes it, from the attributions that already exist — no model
 re-run, no new inference:
@@ -305,7 +304,7 @@ def verify_against_published(
 
 
 # --------------------------------------------------------------------------- #
-# Read-clustered re-analysis (Reviewer 3, Comment 9)                           #
+# Read-clustered re-analysis: the read, not the k-mer, is the unit            #
 # --------------------------------------------------------------------------- #
 
 
@@ -330,11 +329,10 @@ def clustered_enrichment(
     n_boot: int = 2000,
     seed: int = 3469,
 ) -> Dict[str, pd.DataFrame]:
-    """Re-test the attribution enrichment with the *read* as the unit (R3, C9).
+    """Re-test the attribution enrichment with the *read* as the unit.
 
-    Reviewer 3's objection is correct as stated: the published Fisher test treats
-    overlapping stride-1 k-mers as independent, when in fact every k-mer of a read
-    is one observation of the same fragment. This recomputes the same estimand
+    A Fisher test on k-mers treats overlapping stride-1 k-mers as independent,
+    when in fact every k-mer of a read is one observation of the same fragment. This recomputes the same estimand
     three ways, none of which assumes k-mer independence:
 
     * **cluster bootstrap** — resample whole reads with replacement, so the

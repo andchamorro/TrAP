@@ -423,8 +423,8 @@ def subfamily(key: str) -> str:
 
 
 # Canonical synthetic directory resolver — mirror of scripts/sh/_synthetic_paths.sh so the
-# SIM_MODEL → experiment-token mapping lives in one conceptual place (CLAUDE.md: do not
-# duplicate). The two must stay in sync.
+# SIM_MODEL → experiment-token mapping lives in one conceptual place (see
+# docs/development/contributing.md: reuse, never duplicate). The two must stay in sync.
 EXPERIMENT_TOKEN = {"transcript": "l1-transcript-pool", "insert": "l1-host-insert"}
 
 

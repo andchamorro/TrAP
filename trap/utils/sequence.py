@@ -1,4 +1,4 @@
-"""Sequence-level utilities: standardization and long-read fragmentation (DR-2).
+"""Sequence-level utilities: standardization and long-read fragmentation.
 
 These functions were previously inlined inside ``predict.py`` and
 ``GenomeDataset``.  Centralising them here makes them importable from both

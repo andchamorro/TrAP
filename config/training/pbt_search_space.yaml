@@ -1,6 +1,6 @@
 # Population-Based Training (PBT) search space — classification fine-tuning.
 #
-# Reviewers have asked for BOTH the search space and the final config. The final
+# Reproducibility needs BOTH the search space and the final config. The final
 # config lives in config/training/classification_final.json (PBT-derived:
 # lr=5e-05, weight_decay=0.17959754525911098, warmup_ratio=0.1,
 # per_device_train_batch_size=16, gradient_accumulation_steps=2).
@@ -19,7 +19,7 @@
 #
 # RECONSTRUCTED: the original Ray Tune recipe was not version-controlled. This
 # space is reconstructed to be consistent with — and to contain — the final
-# values. It is identified as reconstructed in the response letter.
+# values, and is reported as reconstructed.
 #
 # Confirmed by the author 2026-10-12: the search that produced the reported model
 # ran **128 trials** over batch sizes **{8, 16}** (not 32), and Figure 5 displays

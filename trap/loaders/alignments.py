@@ -1,4 +1,4 @@
-"""Lazy alignment file reader (DR-2).
+"""Lazy alignment file reader.
 
 Previously ``SAMDataset`` lived in ``predict.py``; moved here so that the
 preprocessing and inference paths can both import it without pulling in the

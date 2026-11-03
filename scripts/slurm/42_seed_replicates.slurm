@@ -15,8 +15,8 @@
 #SBATCH --error=logs/%x_%A_%a.err
 #SBATCH --mail-type=END,FAIL
 #
-# Stage 42 — seed replicates for the classification model (Reviewer 3, Comment 5,
-# "whether results are stable across random seeds or multiple training runs").
+# Stage 42 — seed replicates for the classification model: are the results
+# stable across random seeds and multiple training runs?
 #
 # Submit in batches of 3 concurrent tasks (GPUs are scarce; %3 throttles the
 # array rather than queueing all seven two-GPU jobs at once):

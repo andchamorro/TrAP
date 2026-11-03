@@ -11,8 +11,8 @@
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --mail-type=END,FAIL
 #
-# Stage 5 — streaming quantify performance benchmark + manifest (plan §6.6).
-# This is the user-priority gate before the full experimental re-run (§8 floors).
+# Stage 5 — streaming quantify performance benchmark + manifest.
+# This is the throughput gate before the full experimental re-run.
 # Point BENCH_R1/BENCH_R2 at a release-size FASTQ; defaults to the tiny CI fixture.
 
 source "${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/slurm/_common.sh"

@@ -1,4 +1,4 @@
-"""Streaming single-pass quantification pipeline (Phase 2, DR-1).
+"""Streaming single-pass quantification pipeline (Phase 2).
 
 Architecture
 ------------

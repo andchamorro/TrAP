@@ -1,9 +1,8 @@
 """Stratified statistics for the synthetic insertion benchmark (Figure 10).
 
-Reviewer 2's third comment makes two distinct complaints about Figure 10: the
-headline R² = 0.99 is reported without any statement of what it aggregates over,
-and the variation across replicates and across the deletion/mutation strata is
-not quantified.  This module answers both from the two tables of record,
+A single headline R² for Figure 10 says nothing about what it aggregates over,
+or how much it varies across replicates and across the deletion/mutation strata.
+This module quantifies both from the two tables of record,
 
 * ``results/synthetic/chr1/by_insertion_rate.csv`` — R² per method at each of
   the 9 insertion levels (2⁵ … 2¹³), and
@@ -15,8 +14,7 @@ in the repository.  Nothing is recomputed from reads: the design is a 9 × 5 × 
 factorial (insertion level × deletion probability × L1Base2 FLI-L1 element),
 pooled per element, raw abundances, OLS R².
 
-Three things the statistics establish, in decreasing order of how much they
-matter to the response:
+Three things the statistics establish, in decreasing order of importance:
 
 1. **Insertion load is the discriminating factor, not mutation rate.**
    :func:`stratum_gradients` reports the R² lost between the lowest and highest
@@ -129,8 +127,8 @@ def stratum_summary(strata: pd.DataFrame) -> pd.DataFrame:
     Returns:
         One row per (axis, method) with ``n_strata``, mean, SD, min, max, and
         ``n_top`` — the number of strata in which that method has the highest
-        R².  ``n_top`` is the statistic the response leads with, because it is
-        what "consistent" means operationally.
+        R².  ``n_top`` is the headline statistic, because it is what
+        "consistent" means operationally.
     """
     rows = []
     for axis in dict.fromkeys(strata["axis"]):

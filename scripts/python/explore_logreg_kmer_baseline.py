@@ -1,8 +1,8 @@
-"""Exploration — linear baseline on hashed k-mer counts (Reviewer 3, Comment 4).
+"""Exploration — linear baseline on hashed k-mer counts.
 
-Reviewer 3 asks whether the gain of AlbertSalmon over Salmon is attributable to
-the transformer rather than to read pre-filtering in general, and names simpler
-read classifiers as the missing comparison: exact k-mer matching, logistic
+Is the gain of AlbertSalmon over Salmon attributable to the transformer rather
+than to read pre-filtering in general?  Simpler read classifiers are the
+natural comparison: exact k-mer matching, logistic
 regression or gradient boosting on k-mer counts.
 
 This script answers the cheapest and most direct of those: multinomial logistic

@@ -26,8 +26,8 @@
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --mail-type=END,FAIL
 #
-# Stage 41 — score the HELD-OUT split of the reported classifier (Reviewer 3,
-# Comment 3). Trains nothing; loads ${MODEL_CLS}/final and runs one forward pass
+# Stage 41 — score the HELD-OUT split of the reported classifier (Table S1).
+# Trains nothing; loads ${MODEL_CLS}/final and runs one forward pass
 # over the split named `eval`, which Table 1 reports as "Test (held-out)".
 #
 # This stage exists because stage 40 never scored that split. train.py builds the

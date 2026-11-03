@@ -1,4 +1,4 @@
-"""Tests for trap.utils.sequence (DR-2)."""
+"""Tests for trap.utils.sequence."""
 import pytest
 import numpy as np
 
