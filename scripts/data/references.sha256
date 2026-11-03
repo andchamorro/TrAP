@@ -1,0 +1,8 @@
+# sha256 of reference inputs the analyses read, relative to the repo root.
+# Verify with: bash scripts/data/verify_references.sh
+64318ddff470b69b261a667d813210044f60d4ce654253a547db80ff73638d38  data/annotations/GCF_000001405.40_GRCh38.p14_assembly_report.txt
+d52555c45e1f59e298264a60f3adcabfc70505909a7d5883210c533e453f7b89  data/annotations/GCF_000001405.40_GRCh38.p14_rm.LINE1.out
+fc7c5b024696bc0ac84985ab4c03801bf7f75f37bdf0394067ee71ced987af13  data/external/L19088.1.fa
+c55479a26206f78d7e78277836387a5e32dd58383f0f91e31b4f36025736cce7  data/ref/l1base/hsflil1_8438.bed
+94cc2e366ac046324615a3dec7512ca13bd0ec839b63e81e720e6a0614efd4e0  data/ref/l1base/hsflnil1_8438_rm.bed
+4728d2b65936ce68b255556f9967d1ab8ea1ea145ff11d9a0db501a9f8372ebc  data/ref/l1base/hsorf2l1_8438.bed

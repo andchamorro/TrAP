@@ -42,6 +42,9 @@ fetch "${TRANSCRIPTS_URL}" "${TRANSCRIPTS}"
 fetch "${GENOME_URL}" "${GENOME_GZ}"
 fetch "${GTF_URL}" "${GTF_GZ}"
 
+# Refuse to build indexes from a truncated or corrupted download.
+bash "$(dirname "$0")/verify_references.sh"
+
 # --- 2. Decompress genome + GTF (STAR/bwa want plain text) -----------------
 GENOME_FA="${GENOME_GZ%.gz}"
 GTF="${GTF_GZ%.gz}"

@@ -1,0 +1,7 @@
+# md5 of the GENCODE v48 downloads, copied from the publisher's own MD5SUMS file:
+# https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_48/MD5SUMS
+# (md5 because that is what the publisher provides; the local inputs use sha256.)
+# Paths are relative to ${DATA_EXTERNAL} (default data/external).
+1b68ecb47fd4cc3946819fec58a59d8f  gencode.v48.primary_assembly.annotation.gtf.gz
+e4a4d396cca5dd6d0889248b9e93b42a  gencode.v48.transcripts.fa.gz
+4e50894cd0f6d8d2769ad4a0c82913d6  GRCh38.p14.genome.fa.gz
