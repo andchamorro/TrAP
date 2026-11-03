@@ -12,6 +12,7 @@
 | Path constants | Import from `trap.config.config` — never construct manually |
 | Docstrings | Google style with `Args:` / `Returns:` on public functions and classes |
 | Canonical utilities | Reuse, never duplicate: `GenomeDataset` (`trap/loaders/dataset.py`), `try_mkdir` / `genome_file_handle` (`trap/utils/io.py`), k-mer functions (`trap/utils/kmer.py`) |
+| Notebook plotting | Shared R helpers live in `scripts/R/trap_plot_helpers.R`; `source()` it rather than pasting a copy into a notebook |
 
 ## Where code goes
 
