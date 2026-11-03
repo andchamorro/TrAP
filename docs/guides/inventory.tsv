@@ -20,7 +20,7 @@ archive/scripts/draft/run_salmon_mut.sh	ARCHIVE	refs=2	archived (P3.3), moved fr
 archive/scripts/extract_filtered.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/extract_filtered.sh; see docs/guides/archive_index.md	maintainer
 archive/scripts/quantify_preprocessing.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/quantify_preprocessing.sh; see docs/guides/archive_index.md	maintainer
 archive/scripts/quantify_repeatmasker.sh	ARCHIVE	refs=2	archived (P3.3), moved from scripts/quantify_repeatmasker.sh; see docs/guides/archive_index.md	maintainer
-archive/scripts/run_l1em.sh	ARCHIVE	refs=8	archived (P3.3), moved from scripts/run_l1em.sh; see docs/guides/archive_index.md	maintainer
+archive/scripts/run_l1em.sh	ARCHIVE	refs=10	archived (P3.3), moved from scripts/run_l1em.sh; see docs/guides/archive_index.md	maintainer
 archive/scripts/run_salmon.sh	ARCHIVE	refs=7	archived (P3.3), moved from scripts/run_salmon.sh; see docs/guides/archive_index.md	maintainer
 archive/scripts/sh/README.md	ARCHIVE	refs=14	archive README	maintainer
 archive/scripts/sh/bowtie1AndCount.sh	ARCHIVE	provenance:exploratory; refs=2	archived (P3.3), moved from scripts/sh/bowtie1AndCount.sh; see docs/guides/archive_index.md	maintainer
@@ -75,7 +75,7 @@ docs/guides/hpc.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/hyperparameter_tuning.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/installation.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/inventory.tsv	SUPPORT	refs=2	keep	maintainer
-docs/guides/manuscript_provenance.md	SUPPORT	refs=4; review=18	keep	maintainer
+docs/guides/manuscript_provenance.md	SUPPORT	refs=5; review=19	keep	maintainer
 docs/guides/pipeline.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/reproduction.md	SUPPORT	refs=0	keep	maintainer
 docs/guides/synthetic_validation.md	SUPPORT	refs=3	keep	maintainer
@@ -103,10 +103,51 @@ references/.gitkeep	SUPPORT	refs=0	keep	maintainer
 references/GRCh38.chrom.sizes	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
 reports/.gitkeep	SUPPORT	refs=0	keep	maintainer
 reports/figures/.gitkeep	SUPPORT	refs=0	keep	maintainer
-scripts/5race_read_count.sh	REPORTED	provenance:reported; refs=2	keep; frozen API (Figure 11)	maintainer
+scripts/5race_read_count.sh	REPORTED	provenance:reported; refs=4	keep; frozen API (Figure 11)	maintainer
 scripts/R/workflow_overview.R	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
 scripts/aggregate_srr_by_chr.py	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
-scripts/aggregate_srr_l1em_exp.py	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
+scripts/aggregate_srr_l1em_exp.py	REPORTED	provenance:reported; refs=7	keep; frozen API	maintainer
+scripts/analyses/5race_substitution/README.md	EXPLORATORY-KEEP	refs=14	keep; overview of the three 5'RACE substitution routes	
+scripts/analyses/5race_substitution/route_a_isoseq/README.md	EXPLORATORY-KEEP	refs=14	keep; regenerates the Iso-Seq substitution arm (route A) numbers	
+scripts/analyses/5race_substitution/route_a_isoseq/isoseq_5p_ends.py	EXPLORATORY-KEEP	refs=2; print=5	keep; regenerates the Iso-Seq substitution arm (route A) numbers	
+scripts/analyses/5race_substitution/route_a_isoseq/isoseq_calibration_5p_ends.slurm	EXPLORATORY-KEEP	refs=0	keep; regenerates the Iso-Seq substitution arm (route A) numbers	
+scripts/analyses/5race_substitution/route_a_isoseq/isoseq_calibration_align_count.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the Iso-Seq substitution arm (route A) numbers	
+scripts/analyses/5race_substitution/route_a_isoseq/isoseq_calibration_fetch.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the Iso-Seq substitution arm (route A) numbers	
+scripts/analyses/5race_substitution/route_a_isoseq/isoseq_calibration_report.py	EXPLORATORY-KEEP	refs=4; print=11	keep; regenerates the Iso-Seq substitution arm (route A) numbers	
+scripts/analyses/5race_substitution/route_a_isoseq/submit_isoseq_calibration.sh	EXPLORATORY-KEEP	refs=4	keep; regenerates the Iso-Seq substitution arm (route A) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/FREEZE.md	EXPLORATORY-KEEP	refs=2; review=3	keep; pre-registration evidence -- dated before any query-side number existed	
+scripts/analyses/5race_substitution/route_n_l1rip/README.md	EXPLORATORY-KEEP	refs=14	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1hs_l1pa_fpm.py	EXPLORATORY-KEEP	refs=4; print=9	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_blocker_checks.py	EXPLORATORY-KEEP	refs=1; print=9	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_blocker_checks.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_calibration_align_count.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_calibration_fetch.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_calibration_fulllength.slurm	EXPLORATORY-KEEP	refs=1	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_calibration_report.py	EXPLORATORY-KEEP	refs=3; print=16	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_fiveprime_profile.py	EXPLORATORY-KEEP	refs=3; print=4	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_fulllength.py	EXPLORATORY-KEEP	refs=6; print=4	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_g3a_orf_defined.py	EXPLORATORY-KEEP	refs=2; review=2; print=10	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_query_reference.py	EXPLORATORY-KEEP	refs=2; review=2; print=2	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/l1rip_replicate_power.py	EXPLORATORY-KEEP	refs=1; print=6	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_align.slurm	EXPLORATORY-KEEP	refs=4	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_build_refs.slurm	EXPLORATORY-KEEP	refs=1	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_dump_match.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_l1em.slurm	EXPLORATORY-KEEP	refs=3; review=1	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_prefetch.sh	EXPLORATORY-KEEP	refs=2	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_probe.slurm	EXPLORATORY-KEEP	refs=7	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_salmon.slurm	EXPLORATORY-KEEP	refs=1	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_salmon_version.slurm	EXPLORATORY-KEEP	refs=1	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_strandedness.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/query_trap.slurm	EXPLORATORY-KEEP	refs=1; review=1	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/salmon_version_compare.py	EXPLORATORY-KEEP	refs=2; print=8	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_n_l1rip/submit_l1rip_calibration.sh	EXPLORATORY-KEEP	refs=13	keep; regenerates the ORF1p-RIP substitution arm (route N) numbers	
+scripts/analyses/5race_substitution/route_o_lrcage/README.md	EXPLORATORY-KEEP	refs=14	keep; regenerates the long-read CAGE substitution arm (route O) numbers	
+scripts/analyses/5race_substitution/route_o_lrcage/lrcage_5p_ends.py	EXPLORATORY-KEEP	refs=3; print=7	keep; regenerates the long-read CAGE substitution arm (route O) numbers	
+scripts/analyses/5race_substitution/route_o_lrcage/lrcage_calibration_5p_ends.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the long-read CAGE substitution arm (route O) numbers	
+scripts/analyses/5race_substitution/route_o_lrcage/lrcage_calibration_align_count.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the long-read CAGE substitution arm (route O) numbers	
+scripts/analyses/5race_substitution/route_o_lrcage/lrcage_calibration_fetch.slurm	EXPLORATORY-KEEP	refs=2	keep; regenerates the long-read CAGE substitution arm (route O) numbers	
+scripts/analyses/5race_substitution/route_o_lrcage/lrcage_calibration_report.py	EXPLORATORY-KEEP	refs=2; print=16	keep; regenerates the long-read CAGE substitution arm (route O) numbers	
+scripts/analyses/5race_substitution/route_o_lrcage/submit_lrcage_calibration.sh	EXPLORATORY-KEEP	refs=3	keep; regenerates the long-read CAGE substitution arm (route O) numbers	
 scripts/build_dataset.sh	PIPELINE	refs=8; todo=1	keep	maintainer
 scripts/build_dataset_seqlabel.sh	REPORTED	provenance:reported; refs=4	keep; frozen API	maintainer
 scripts/build_l1_corpus.py	PIPELINE	refs=2; print=7	keep	maintainer
@@ -118,23 +159,23 @@ scripts/diagnostics/kmer_overlap.py	PIPELINE	refs=2	keep	maintainer
 scripts/divide_gff.py	PIPELINE	refs=8; print=3	keep	maintainer
 scripts/generate_dataset.sh	PIPELINE	refs=2	keep	maintainer
 scripts/make_supplementary_tables.py	REPORTED	provenance:reported; refs=1; print=1	keep; frozen API	maintainer
-scripts/python/audit_repo.py	SUPPORT	refs=1; todo=6; review=2	keep; generates this inventory (marker counts are its own regex literals)	maintainer
+scripts/python/audit_repo.py	SUPPORT	refs=1; todo=6; review=3	keep; generates this inventory (marker counts are its own regex literals)	maintainer
 scripts/python/explore_logreg_kmer_baseline.py	EXPLORATORY-KEEP	provenance:reported; refs=2; print=1	keep; listed under 'Not behind any reported result' in manuscript_provenance.md	maintainer
 scripts/python/generate_synthetic_dataset.py	REPORTED	provenance:reported; refs=3; print=2	keep; frozen API	maintainer
 scripts/python/synthetic_abundance.py	REPORTED	provenance:reported; refs=4; print=12	keep; frozen API	maintainer
 scripts/rm_to_gff3.py	PIPELINE	refs=2; print=8	keep	maintainer
 scripts/run_entropy_redundancy.sh	SUPPORT	refs=0	keep (D-ASK); local runner of the reported k-selection, Grace uses 05_entropy_redundancy.slurm	maintainer
-scripts/salmon_pipeline.sh	REPORTED	provenance:reported; refs=2	keep; frozen API (Figure 11)	maintainer
+scripts/salmon_pipeline.sh	REPORTED	provenance:reported; refs=5	keep; frozen API (Figure 11)	maintainer
 scripts/setup_conda_env.sh	PIPELINE	refs=5	keep	maintainer
 scripts/sh/_l1em_reference.sh	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
 scripts/sh/_synthetic_paths.sh	REPORTED	provenance:reported; refs=13	keep; frozen API	maintainer
 scripts/sh/align_star.sh	REPORTED	provenance:reported; refs=8	keep; frozen API	maintainer
 scripts/sh/bwaAndCount.sh	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
-scripts/sh/bwamemAndCount.sh	REPORTED	provenance:reported; refs=4	keep; 5'RACE race5 reference of Figure 11 via scripts/5race_read_count.sh	maintainer
+scripts/sh/bwamemAndCount.sh	REPORTED	provenance:reported; refs=5	keep; 5'RACE race5 reference of Figure 11 via scripts/5race_read_count.sh	maintainer
 scripts/sh/generate_synthetic_dataset.sh	REPORTED	provenance:reported; refs=8	keep; frozen API	maintainer
 scripts/sh/run_albertem.sh	REPORTED	provenance:reported; refs=5	keep; frozen API	maintainer
 scripts/sh/run_htseq.sh	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
-scripts/sh/run_l1em.sh	PIPELINE	refs=7	keep	maintainer
+scripts/sh/run_l1em.sh	PIPELINE	refs=9	keep	maintainer
 scripts/sh/run_salmon.sh	REPORTED	provenance:reported; refs=6	keep; frozen API	maintainer
 scripts/sh/run_tetranscripts.sh	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
 scripts/slurm/00_env_check.slurm	SUPPORT	refs=0	keep; pre-flight environment check	maintainer
@@ -159,15 +200,15 @@ scripts/slurm/44_logreg_kmer_baseline.slurm	EXPLORATORY-KEEP	provenance:reported
 scripts/slurm/50_benchmark.slurm	PIPELINE	refs=1	keep	maintainer
 scripts/slurm/60_generate_synthetic.slurm	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
 scripts/slurm/61_synthetic_abundance.slurm	REPORTED	provenance:reported; refs=2	keep; frozen API	maintainer
-scripts/slurm/62_synthetic_validation.slurm	REPORTED	provenance:reported; refs=6	keep; frozen API	maintainer
+scripts/slurm/62_synthetic_validation.slurm	REPORTED	provenance:reported; refs=7	keep; frozen API	maintainer
 scripts/slurm/63_run_baseline.slurm	REPORTED	provenance:reported; refs=4	keep; frozen API	maintainer
 scripts/slurm/64_baseline_compare.slurm	REPORTED	provenance:reported; refs=1	keep; frozen API	maintainer
 scripts/slurm/65_subfamily_confusion.slurm	EXPLORATORY-KEEP	provenance:exploratory; refs=1	keep; listed under 'Not behind any reported result' in manuscript_provenance.md	maintainer
 scripts/slurm/70_interpret.slurm	REPORTED	provenance:reported; refs=1	keep; frozen API	maintainer
 scripts/slurm/71_kmer_overlap.slurm	REPORTED	provenance:reported; refs=1	keep; frozen API	maintainer
 scripts/slurm/README.md	PIPELINE	refs=14	keep	maintainer
-scripts/slurm/_common.sh	PIPELINE	refs=50	keep	maintainer
-scripts/slurm/hpc_config.py	PIPELINE	refs=5; print=11	keep	maintainer
+scripts/slurm/_common.sh	PIPELINE	refs=51	keep	maintainer
+scripts/slurm/hpc_config.py	PIPELINE	refs=8; print=11	keep	maintainer
 scripts/slurm/legacy/google_sentencepiece.slurm	ARCHIVE	provenance:exploratory; refs=2	already archived in place under scripts/slurm/legacy/; keep frozen, exclude from lint	maintainer
 scripts/slurm/legacy/mlm/24_mlm_smoke.slurm	REPORTED	refs=1	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
 scripts/slurm/legacy/mlm/25_tune_mlm.slurm	REPORTED	refs=2	keep frozen under scripts/slurm/legacy/; cited for the MLM negative result / SentencePiece comparison	maintainer
@@ -253,8 +294,8 @@ tests/utils/test_seeding.py	SUPPORT	refs=0	keep	maintainer
 tests/utils/test_sequence.py	SUPPORT	refs=0	keep	maintainer
 tests/utils/test_split_no_leakage.py	SUPPORT	refs=0	keep	maintainer
 tests/utils/test_standardize_consistency.py	SUPPORT	refs=0	keep	maintainer
-trap/__init__.py	PIPELINE	refs=188	keep	maintainer
-trap/analysis/__init__.py	PIPELINE	refs=41	keep	maintainer
+trap/__init__.py	PIPELINE	refs=210	keep	maintainer
+trap/analysis/__init__.py	PIPELINE	refs=46	keep	maintainer
 trap/analysis/__main__.py	PIPELINE	refs=0	keep; entry point for python -m trap.analysis	maintainer
 trap/analysis/_l1_align.py	REPORTED	provenance:reported; refs=8	keep; frozen API	maintainer
 trap/analysis/ablation.py	EXPLORATORY-KEEP	provenance:reported; refs=4	keep; listed under 'Not behind any reported result' in manuscript_provenance.md	maintainer
@@ -271,12 +312,12 @@ trap/analysis/kmer_counting.py	REPORTED	provenance:reported; refs=6	keep; frozen
 trap/analysis/negative_control.py	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
 trap/analysis/quantification.py	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
 trap/analysis/relabel_by_sequence.py	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
-trap/analysis/robustness.py	REPORTED	provenance:reported; refs=4	keep; frozen API	maintainer
+trap/analysis/robustness.py	REPORTED	provenance:reported; refs=9	keep; frozen API	maintainer
 trap/analysis/selection.py	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
 trap/analysis/subfamily_confusion.py	EXPLORATORY-KEEP	provenance:exploratory; refs=2	keep; listed under 'Not behind any reported result' in manuscript_provenance.md	maintainer
 trap/analysis/synthetic_strata.py	REPORTED	provenance:reported; refs=3	keep; frozen API	maintainer
 trap/config/__init__.py	PIPELINE	refs=42	keep	maintainer
-trap/config/config.py	PIPELINE	refs=36	keep	maintainer
+trap/config/config.py	PIPELINE	refs=39	keep	maintainer
 trap/config/manifest.py	PIPELINE	refs=10	keep	maintainer
 trap/config/schemas.py	PIPELINE	provenance:reported; refs=9	keep	maintainer
 trap/config/verbosity.py	PIPELINE	refs=10	keep	maintainer
@@ -285,12 +326,12 @@ trap/loaders/alignments.py	PIPELINE	refs=3	keep	maintainer
 trap/loaders/dataset.py	PIPELINE	refs=19	keep	maintainer
 trap/loaders/salmon_tokenizer.py	REPORTED	provenance:reported; refs=7	keep; frozen API	maintainer
 trap/loaders/tokenizer.py	REPORTED	provenance:reported; refs=26	keep; frozen API	maintainer
-trap/modeling/__init__.py	PIPELINE	refs=33	keep	maintainer
+trap/modeling/__init__.py	PIPELINE	refs=34	keep	maintainer
 trap/modeling/_inference.py	PIPELINE	refs=3	keep	maintainer
 trap/modeling/_setup.py	PIPELINE	refs=1	keep	maintainer
 trap/modeling/albert.py	REPORTED	provenance:reported; refs=3; print=3	keep; frozen API	maintainer
-trap/modeling/postprocessing.py	REPORTED	provenance:reported; refs=15	keep; frozen API	maintainer
-trap/modeling/predict.py	REPORTED	provenance:reported; refs=15	keep; frozen API	maintainer
+trap/modeling/postprocessing.py	REPORTED	provenance:reported; refs=16	keep; frozen API	maintainer
+trap/modeling/predict.py	REPORTED	provenance:reported; refs=16	keep; frozen API	maintainer
 trap/modeling/quantify.py	REPORTED	provenance:reported; refs=6	keep; frozen API	maintainer
 trap/modeling/train.py	REPORTED	provenance:reported; refs=32	keep; frozen API	maintainer
 trap/modeling/tune.py	REPORTED	provenance:reported; refs=18	keep; frozen API	maintainer

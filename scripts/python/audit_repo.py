@@ -134,6 +134,12 @@ def suggest_class(path: str, role: str, n_refs: int) -> str:
         return "EXPLORATORY-KEEP"
     if path in SUPPORT_FILES or path.startswith(SUPPORT_PREFIXES):
         return "SUPPORT"
+    # Revision-round analyses back the response letter, not a manuscript item, so they
+    # are not REPORTED; they are kept because a negative result nobody can regenerate
+    # is not evidence.  Each route is self-contained and nothing in the pipeline
+    # imports it, so the reference count would otherwise send them to ASK.
+    if path.startswith("scripts/analyses/"):
+        return "EXPLORATORY-KEEP"
     if path.startswith("scripts/draft/"):
         return "ARCHIVE"
     if n_refs == 0:
