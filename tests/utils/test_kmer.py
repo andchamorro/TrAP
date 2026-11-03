@@ -265,3 +265,82 @@ class TestIntegerAliasRoundtrip:
         encoded = seq_to_encoded(original, encoding=enc_alias)
         decoded = encoded_to_seq(encoded, encoding=dec_alias)
         assert decoded == original
+
+
+# -----------------------------------------------------------------------
+# Sequence lengths that are not a multiple of the encoding size
+# -----------------------------------------------------------------------
+
+
+class TestNonDivisibleLengths:
+    """The trailing ``len % n`` bases of an n-mer-encoded sequence are dropped.
+
+    No padding is added, so decoding returns the truncated sequence rather
+    than the original.  The encoding is lossy for such inputs by design.
+    """
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("seq,expected_chars", [
+        ("", 0),
+        ("A", 0),
+        ("AC", 1),
+        ("ACT", 1),
+        ("ACTG", 2),
+        ("ACTGA", 2),
+    ])
+    def test_2mer_length_is_floor_division(self, seq, expected_chars):
+        assert len(seq_to_encoded(seq, encoding=2)) == expected_chars
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("seq,expected_chars", [
+        ("", 0),
+        ("AC", 0),
+        ("ACT", 1),
+        ("ACTG", 1),
+        ("ACTGA", 1),
+        ("ACTGAC", 2),
+    ])
+    def test_3mer_length_is_floor_division(self, seq, expected_chars):
+        assert len(seq_to_encoded(seq, encoding=3)) == expected_chars
+
+    @pytest.mark.unit
+    def test_2mer_trailing_base_is_ignored(self):
+        assert seq_to_encoded("ACTGA", encoding=2) == seq_to_encoded("ACTG", encoding=2)
+
+    @pytest.mark.unit
+    def test_3mer_trailing_bases_are_ignored(self):
+        assert seq_to_encoded("ACTGA", encoding=3) == seq_to_encoded("ACT", encoding=3)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("seq", ["ACT", "ACTGA", "A"])
+    def test_2mer_roundtrip_returns_truncated_sequence(self, seq):
+        decoded = encoded_to_seq(seq_to_encoded(seq, encoding=2), encoding=2)
+        assert decoded == seq[: len(seq) // 2 * 2]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("seq", ["AC", "ACTG", "ACTGA"])
+    def test_3mer_roundtrip_returns_truncated_sequence(self, seq):
+        decoded = encoded_to_seq(seq_to_encoded(seq, encoding=3), encoding=3)
+        assert decoded == seq[: len(seq) // 3 * 3]
+
+    @pytest.mark.unit
+    def test_non_acgt_character_raises(self):
+        with pytest.raises(KeyError):
+            seq_to_encoded("ACNT", encoding=2)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("k,encoding,seq", [
+        (3, 2, "ACTGAC"),
+        (5, 2, "ACTGACTG"),
+        (4, 3, "ACTGACTG"),
+        (7, 3, "ACTGACTGAC"),
+    ])
+    def test_kmer_split_keeps_one_token_per_window(self, k, encoding, seq):
+        """A k that the encoding does not divide still yields len - k + 1 tokens."""
+        assert len(kmer_split(k, seq, encoding=encoding).split(" ")) == len(seq) - k + 1
+
+    @pytest.mark.unit
+    def test_kmer_split_token_drops_window_remainder(self):
+        """k=3 under 2-mer encoding: each 3-mer window keeps only its first pair."""
+        tokens = kmer_split(3, "ACTG", encoding=2).split(" ")
+        assert tokens == [seq_to_encoded("AC", 2), seq_to_encoded("CT", 2)]

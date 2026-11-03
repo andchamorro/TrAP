@@ -23,14 +23,18 @@ def seq_to_encoded(seq: str, encoding: Optional[Union[str, int]] = None) -> str:
 
     Returns:
         Encoded string, or the original sequence if encoding is None.
+
+    Note:
+        The encoding is lossy when ``len(seq)`` is not a multiple of the n-mer
+        size: the trailing ``len(seq) % n`` bases are dropped, nothing is padded,
+        and decoding returns the truncated sequence.  A character outside
+        ``ACGT`` raises ``KeyError``.
     """
-    # TODO: Handle the padding if the seq is not div by 2
     if encoding in ("pairs", "2-mers", 2):
         return ''.join(
             _PAIRS_TO_UNICODE[seq[i:i + 2]] for i in range(0, len(seq) - 1, 2)
         )
 
-    # TODO: Handle the padding if the seq is not div by 3
     if encoding in ("codons", "3-mers", 3):
         return ''.join(
             _CODONS_TO_UNICODE[seq[i:i + 3]] for i in range(0, len(seq) - 2, 3)

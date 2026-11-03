@@ -288,11 +288,11 @@ trap/loaders/tokenizer.py	REPORTED	provenance:reported; refs=26	keep; frozen API
 trap/modeling/__init__.py	PIPELINE	refs=33	keep	maintainer
 trap/modeling/_inference.py	PIPELINE	refs=3	keep	maintainer
 trap/modeling/_setup.py	PIPELINE	refs=1	keep	maintainer
-trap/modeling/albert.py	REPORTED	provenance:reported; refs=3; todo=1; print=3	keep; frozen API	maintainer
+trap/modeling/albert.py	REPORTED	provenance:reported; refs=3; print=3	keep; frozen API	maintainer
 trap/modeling/postprocessing.py	REPORTED	provenance:reported; refs=15	keep; frozen API	maintainer
 trap/modeling/predict.py	REPORTED	provenance:reported; refs=15	keep; frozen API	maintainer
 trap/modeling/quantify.py	REPORTED	provenance:reported; refs=6	keep; frozen API	maintainer
-trap/modeling/train.py	REPORTED	provenance:reported; refs=32; todo=4	keep; frozen API	maintainer
+trap/modeling/train.py	REPORTED	provenance:reported; refs=32	keep; frozen API	maintainer
 trap/modeling/tune.py	REPORTED	provenance:reported; refs=18	keep; frozen API	maintainer
 trap/reproduce.py	REPORTED	provenance:reported; refs=4	keep; frozen API	maintainer
 trap/utils/__init__.py	PIPELINE	refs=60	keep	maintainer
@@ -300,7 +300,7 @@ trap/utils/canonical_kmer.py	REPORTED	provenance:reported; refs=8	keep; frozen A
 trap/utils/dna2bit.py	PIPELINE	refs=4	keep	maintainer
 trap/utils/fastq.py	PIPELINE	refs=3	keep	maintainer
 trap/utils/io.py	PIPELINE	refs=18	keep	maintainer
-trap/utils/kmer.py	REPORTED	provenance:reported; refs=20; todo=2	keep; frozen API	maintainer
+trap/utils/kmer.py	REPORTED	provenance:reported; refs=20	keep; frozen API	maintainer
 trap/utils/labels.py	REPORTED	provenance:reported; refs=10	keep; frozen API	maintainer
 trap/utils/preprocessing_sequences.py	REPORTED	provenance:reported; refs=15	keep; frozen API	maintainer
 trap/utils/rmout.py	REPORTED	provenance:reported; refs=4	keep; frozen API	maintainer

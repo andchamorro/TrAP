@@ -391,7 +391,7 @@ class AlbertMaskedTrainer:
         """
         Calculates Masked LM and SOP loss
         """
-        # TODO: position_ids
+        # position_ids=None: AlbertEmbeddings then uses sequential positions 0..len-1.
         cls_logits, token_logits = self.transformer(input_ids, token_type_ids, position_ids=None, key_padding_mask=key_padding_mask)
 
         cls_loss = F.cross_entropy(cls_logits, sentence_order)
