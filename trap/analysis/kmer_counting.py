@@ -4,7 +4,7 @@ Builds the empirical k-mer frequency distribution for a corpus across a range of
 k, optionally at several subsampling fractions, and turns each distribution into
 one tidy row via :func:`trap.analysis.entropy.entropy_summary`.
 
-Two design choices address the peer review directly:
+Two design choices:
 
 * **Exact counts, not hashed approximations** — k-mers are counted either via
   Jellyfish (default when available: multi-threaded C++ hash counter, orders of

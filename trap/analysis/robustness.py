@@ -1,7 +1,7 @@
 """Robustness of the 5'RACE locus-level concordance benchmark (Figure 11).
 
-Peer review raised three distinct objections to the headline 5'RACE result, and
-this module answers all three from the same locus table so the numbers cannot
+The headline 5'RACE result is open to three distinct objections, and this module
+answers all three from the same locus table so the numbers cannot
 drift apart:
 
 1. **Locus-set dependence** — the published panel applies
@@ -15,7 +15,7 @@ drift apart:
    therefore evaluates seven definitions (``F0``-``F6``) side by side, including
    a unit-aware variant that applies the cut only to the methods it was
    calibrated on.  The paired TrAP advantage is reported across all of them.
-2. **Dependence on one point** — two separate loci get conflated in review.
+2. **Dependence on one point** — two separate loci are easily conflated.
    :data:`DOMINANT_LOCUS` is the high-leverage point (the largest ``race5``
    value in the benchmark); :data:`MAX_RESIDUAL_LOCUS` is the point the figure
    circles, which is the largest *residual* by construction and not influential
