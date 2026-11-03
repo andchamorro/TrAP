@@ -147,7 +147,7 @@ table maps questions to the modules that settle them.
 | Is the high-k entropy plateau a finite-sampling artefact? | `trap/analysis/entropy.py` (bias-corrected estimators), `trap/analysis/kmer_counting.py` (rarefaction), saturation gate in `trap/analysis/selection.py` |
 | Operational definitions of entropy and redundancy; where do diminishing returns begin? | `trap/analysis/entropy.py`, marginal-gain gate in `trap/analysis/selection.py` |
 | Does a plateau establish the optimal k for the task? | `trap/analysis/ablation.py`, task gate in `trap/analysis/selection.py`, `config/analysis/entropy_redundancy.yaml` |
-| A second 5'RACE library, in a line with more active L1 loci | No such library exists: `SRR4099955` is the only L1-targeted 5'RACE deposit in SRA/ENA. Three substitution protocols were measured and all three discarded: `scripts/analyses/5race_substitution/` (routes A, N, O) |
+| A second 5'RACE library, in a line with more active L1 loci | No such library exists: `SRR4099955` is the only L1-targeted 5'RACE deposit in SRA/ENA. Three substitution protocols were measured (`scripts/analyses/5race_substitution/`): Iso-Seq (route A) and long-read CAGE (route O) were rejected, and ORF1p-RIP (route N) is retained as a descriptive reference only |
 | Is the 5'RACE benchmark independent of the shared repeat annotation? | `l1base_overlap_counts` and `l1base_restricted_fits` in `trap/analysis/robustness.py` |
 | Sensitivity to the locus-set filter | `filter_definition_grid` in `trap/analysis/robustness.py` |
 | Formal test of the ΔR² between methods; what the Figure 10 R² aggregates over and how it varies across strata | `bootstrap_delta_r2` in `trap/analysis/robustness.py`; `trap/analysis/synthetic_strata.py` |

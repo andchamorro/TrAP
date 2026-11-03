@@ -27,7 +27,7 @@ no locus-repertoire difference can explain the result away.
 The cap-selection contrast is a **ratio of 0.65** — cap selection *depletes* young L1
 relative to its own random-primed control, where the route requires enrichment well
 above 1. The L1-activation contrast (DACSB vs DMSO within LRCAGE) is 0.80, so activating
-L1 did not rescue it either.
+L1 did not raise the young share either.
 
 The top 5′ locus makes the mechanism concrete: a 358 bp L1PA8 fragment with 85 LRCAGE
 reads against 2 LRhex reads. What cap-trapping enriches here is a short old fragment
@@ -35,8 +35,8 @@ sitting at a real TSS — a promoter that happens to contain L1 sequence, not an
 promoter. For comparison, the published 5′RACE anchor sits at 74.0 % young share and the
 rejected Iso-Seq arm at 4.6 %.
 
-A route that fails the contrast it was designed to pass is finished, and no further
-compute was spent.
+A route that fails the contrast it was designed to pass has no further use as a
+substitute.
 
 ## Files
 

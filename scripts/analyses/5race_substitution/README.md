@@ -7,20 +7,22 @@ a cell line with more active L1 loci, would strengthen it.
 **No such library exists.** A controlled-vocabulary enumeration of SRA and ENA, paired
 with a Europe PMC citation sweep, returned exactly one L1-targeted 5′RACE *deposit*:
 `SRR4099955` itself. The code here is what was run to answer the next question — whether
-some other protocol can stand in for 5′RACE — and the answer in all three cases was no.
+some other protocol can stand in for 5′RACE. For two of the three the answer was no; the
+third, an L1-targeted RNA immunoprecipitation, is usable only as a descriptive reference.
 
 The three substitution attempts are each a calibration arm, not a result. Each one asks
 the same question: *does this protocol measure what 5′RACE measures?* A substitute is only
-admissible if it does, and all three were discarded on their own measurements rather than
-on judgement. That is why the code is kept: the negative is the reported finding, and a
-negative that cannot be regenerated is not evidence.
+admissible if it does. Two were rejected on their own measurements rather than on
+judgement, and the third was kept with its limits stated. That is why the code is kept: the
+negatives are the reported finding, and a negative that cannot be regenerated is not
+evidence.
 
 ## The three routes
 
 | Dir | Route | Dataset | Protocol | Verdict |
 |---|---|---|---|---|
 | `route_a_isoseq/` | A | PRJNA1176011 (HEK-293 arm) | PacBio Revio Iso-Seq | rejected by measurement |
-| `route_n_l1rip/` | N | PRJNA657989 (VM-Cub-1) | L1-ORF1p RNA-IP, ONT GridION | passed composition, promoted, then discarded on the query side |
+| `route_n_l1rip/` | N | PRJNA657989 (VM-Cub-1) | L1-ORF1p RNA-IP, ONT GridION | passed composition; promoted to a query-side experiment; kept as a descriptive reference, not a 5′-initiation benchmark |
 | `route_o_lrcage/` | O | PRJNA936447 (NCI-H1299) | cap-trapped long-read CAGE, PacBio Sequel II | rejected by its own internal control |
 
 Route A is the cleanest comparison and the clearest negative: PRJNA1176011 contains an
@@ -39,9 +41,12 @@ against a different cell line could be.
 Route N went furthest. ORF1p RIP is L1-targeted, and on composition it passed: a 50.3 %
 (95 % CI 45.9–54.7) 5′-restricted young share over 19,316 reads, with ρ = 0.807 on
 full-length young loci carrying ≥ 10 reads (n = 165) — 94 % of the counting-noise
-ceiling, so most of the residual is sampling noise rather than disagreement. It was
-discarded for a reason unrelated to composition; see `route_n_l1rip/FREEZE.md` for the
-decisions that were fixed before any query-side number existed.
+ceiling, so most of the residual is sampling noise rather than disagreement. Its limits
+are that the library is not 5′-anchored by design (22–33 % of reads start in the first 1 %
+of a full-length young element, against 76 % for the 5′RACE library through the same code)
+and that no independent pipeline reproduces the source paper's locus ranking. See
+`route_n_l1rip/FREEZE.md` for the decisions that were fixed before any query-side number
+existed.
 
 ## Shared conventions
 

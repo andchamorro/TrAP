@@ -1,8 +1,9 @@
 # Route N — L1-ORF1p RIP nanopore (VM-Cub-1) as a 5′RACE substitute
 
-**Verdict: passed composition, was promoted to a query-side experiment, and was
-discarded there.** This is the route that went furthest, and the only one that produced
-quantitative agreement with the reference rather than just a rejection.
+**Verdict: passed composition and was promoted to a query-side experiment; retained as a
+descriptive locus-ranking reference, not as a 5′-initiation benchmark.** This is the route
+that went furthest, and the only one that produced quantitative agreement with the
+reference rather than just a rejection.
 
 ## Why this route was worth the compute
 
