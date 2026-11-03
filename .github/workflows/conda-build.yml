@@ -36,8 +36,29 @@ jobs:
         conda activate trap-test
         pip install -e .
 
+    # ggplot2 and data.table are installed from CRAN by envs/r-packages.R, the same route
+    # as a local setup, so the R smoke test exercises the real notebook toolchain.
+    - name: Install R packages
+      shell: bash -l {0}
+      run: |
+        conda activate trap-test
+        Rscript --vanilla envs/r-packages.R
+
+    - name: Lint
+      shell: bash -l {0}
+      # Informational until the style sweep lands: the tree predates `make lint` being
+      # enforced and still has findings (flake8, isort, black).  Flip this to blocking by
+      # deleting `continue-on-error` once `make lint` passes locally.
+      continue-on-error: true
+      run: |
+        conda activate trap-test
+        make lint
+
     - name: Run tests
       shell: bash -l {0}
+      env:
+        # Turn "R not installed" into a failure so the R smoke test cannot skip silently.
+        TRAP_REQUIRE_R: "1"
       run: |
         conda activate trap-test
         pytest tests/ -v -m "not slow" --cov=trap --cov-report=xml --cov-report=term-missing
