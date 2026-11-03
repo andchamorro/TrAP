@@ -37,9 +37,9 @@ outputs, and the stage or command that calls it.
 ## Comments
 
 Comments explain *why*, in domain terms: the biological or statistical reason for a choice,
-or the failure a guard prevents. They do not cite review rounds, private plan sections or
-agent instruction files. The mapping from review comments to analyses lives in
-`docs/guides/manuscript_provenance.md`.
+or the failure a guard prevents. They do not cite revision rounds, private plan sections or
+agent instruction files, and they never name a person or a role. The mapping from scientific
+questions to the analyses that answer them lives in `docs/guides/manuscript_provenance.md`.
 
 ## Published results are frozen
 

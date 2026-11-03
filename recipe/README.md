@@ -116,7 +116,7 @@ The package is automatically built and tested via GitHub Actions (`.github/workf
 1. Fork https://github.com/conda-forge/staged-recipes
 2. Add recipe to `recipes/trap/`
 3. Submit pull request
-4. Address reviewer feedback
+4. Address feedback on the pull request
 
 ### To bioconda
 

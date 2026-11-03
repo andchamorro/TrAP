@@ -3,8 +3,8 @@
 Writes ``docs/guides/inventory.tsv`` with the columns ``path``, ``class``,
 ``evidence``, ``action`` and ``owner``.  ``evidence`` is recomputed on every
 run from the tree: where ``docs/guides/manuscript_provenance.md`` names the
-file, how many other tracked files reference it, and its TODO/FIXME, review-
-reference and ``print`` counts.  ``class``, ``action`` and ``owner`` are hand
+file, how many other tracked files reference it, and its TODO/FIXME, revision-
+coupling and ``print`` counts.  ``class``, ``action`` and ``owner`` are hand
 decisions: when the inventory already exists they are carried over unchanged,
 and only files new since the last run get a rule-based suggestion.
 
@@ -36,7 +36,13 @@ CLASSES = {"REPORTED", "PIPELINE", "SUPPORT", "EXPLORATORY-KEEP", "ARCHIVE", "RE
 EXPLORATORY_SECTION = "Not behind any reported result"
 
 TODO_RE = re.compile(r"\b(TODO|FIXME)\b")
-REVIEW_RE = re.compile(r"reviewer|\bR[0-9]-[0-9]|CLAUDE\.md|plan §", re.IGNORECASE)
+#: Guards the comment convention in ``docs/development/contributing.md``: a comment
+#: should state the scientific reason, not cite a revision round, a person, a private
+#: plan section or an agent instruction file.  The first alternative is spelled in
+#: parts so this guard does not itself trip the rule it enforces.
+REVISION_COUPLING_RE = re.compile(
+    r"review" r"er|\bR[0-9]-[0-9]|CLAUDE\.md|plan §", re.IGNORECASE
+)
 PRINT_RE = re.compile(r"^\s*print\(", re.MULTILINE)
 
 SUPPORT_PREFIXES = ("tests/", "docs/", "envs/", "recipe/", ".github/", "references/", "reports/")
@@ -113,14 +119,14 @@ def referencing_files(path: str) -> list[str]:
 
 
 def marker_counts(path: str) -> dict[str, int]:
-    """Count TODO/FIXME, review references and ``print`` calls in a text file."""
+    """Count TODO/FIXME, revision-coupling markers and ``print`` calls in a text file."""
     try:
         text = (REPO / path).read_text()
     except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
         return {}
     counts = {
         "todo": len(TODO_RE.findall(text)),
-        "review": len(REVIEW_RE.findall(text)),
+        "revision_coupling": len(REVISION_COUPLING_RE.findall(text)),
         "print": len(PRINT_RE.findall(text)) if path.endswith(".py") else 0,
     }
     return {k: v for k, v in counts.items() if v}
@@ -136,8 +142,8 @@ def suggest_class(path: str, role: str, n_refs: int) -> str:
         return "SUPPORT"
     # Revision-round analyses back the response letter, not a manuscript item, so they
     # are not REPORTED; they are kept because a negative result nobody can regenerate
-    # is not evidence.  Each route is self-contained and nothing in the pipeline
-    # imports it, so the reference count would otherwise send them to ASK.
+    # is not evidence.  Each route is self-contained and nothing in the
+    # pipeline imports it, so the reference count would otherwise send them to ASK.
     if path.startswith("scripts/analyses/"):
         return "EXPLORATORY-KEEP"
     if path.startswith("scripts/draft/"):

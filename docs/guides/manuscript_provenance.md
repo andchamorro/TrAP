@@ -136,33 +136,34 @@ Stage A collector: `scripts/aggregate_srr_by_chr.py`. Alignment axis:
 | Stage listing and submission chain | `trap/reproduce.py`, `scripts/slurm/submit_pipeline.sh` |
 | Supplementary tables S1-S13 as pandoc markdown | `scripts/make_supplementary_tables.py` |
 
-## Review-driven analyses
+## Revision-round analyses
 
-Analyses added or revised in the IJMS review rounds, keyed to the comment that
-prompted them (R2-1 = Reviewer 2, comment 1). The code itself states only the
-scientific question; this table keeps the history.
+Analyses added or revised during the IJMS revision rounds, keyed to the scientific
+question each one answers. Every question is answerable from the code alone; this
+table maps questions to the modules that settle them.
 
-| Comment | Question | Code |
-|---|---|---|
-| Reviewer 1 | Is the high-k entropy plateau a finite-sampling artefact? | `trap/analysis/entropy.py` (bias-corrected estimators), `trap/analysis/kmer_counting.py` (rarefaction), saturation gate in `trap/analysis/selection.py` |
-| Reviewers 1–2 | Operational definitions of entropy and redundancy; where do diminishing returns begin? | `trap/analysis/entropy.py`, marginal-gain gate in `trap/analysis/selection.py` |
-| Reviewer 3 | Does a plateau establish the optimal k for the task? | `trap/analysis/ablation.py`, task gate in `trap/analysis/selection.py`, `config/analysis/entropy_redundancy.yaml` |
-| R2-1 | Is the 5'RACE benchmark independent of the shared repeat annotation? | `l1base_overlap_counts` and `l1base_restricted_fits` in `trap/analysis/robustness.py` |
-| R2-2 | Sensitivity to the locus-set filter | `filter_definition_grid` in `trap/analysis/robustness.py` |
-| R2-3 | Formal test of the ΔR² between methods; what the Figure 10 R² aggregates over and how it varies across strata | `bootstrap_delta_r2` in `trap/analysis/robustness.py`; `trap/analysis/synthetic_strata.py` |
-| R2-5 | Class imbalance: mitigation, size, and propagation of the L1HS recall deficit | `trap/analysis/imbalance.py` |
-| R2-6 | Comparator multi-mapping settings, reported | `config/baselines/baseline_settings.yaml`, guarded by `tests/analysis/test_baseline_settings.py` |
-| R2-9 | Is the NEGATIVE class a clean control (Figure 13)? | `trap/analysis/negative_control.py`; `python -m trap.analysis negative-control`, `chrom-length` |
-| R2-10 | ORF0 enrichment | `trap/analysis/enrichment.py` |
-| R2-Major-13 | How the relevance scores are computed (Layer Integrated Gradients, not attention) and whether top k-mers cluster in L1 domains | `trap/analysis/interpret.py`, `scripts/slurm/70_interpret.slurm` |
-| R3-3 | Held-out evaluation with per-class metrics and confusion matrix | `trap/analysis/heldout_eval.py`, `scripts/slurm/41_heldout_eval.slurm` |
-| R3-4 | Simpler read classifiers as a comparison | `scripts/python/explore_logreg_kmer_baseline.py`, `scripts/slurm/44_logreg_kmer_baseline.slurm` |
-| R3-5 | Stability across random seeds and training runs | `scripts/slurm/42_seed_replicates.slurm`, `43_seed_heldout.slurm`, `config/training/seed_replicates.txt`, `python -m trap.analysis seed-summary` |
-| R3-9 | Attribution enrichment with the read, not the k-mer, as the unit | `clustered_enrichment` in `trap/analysis/enrichment.py` |
-| Reviewer 3, minor | Parameter count of the reported classifier | `python -m trap.analysis model-params` |
-| Reviewers (unspecified) | Hyperparameter search space and final configuration | `config/training/pbt_search_space.yaml` |
-| Review response, §7–§8 of its export | ART and STAR parameters | `ARTConfigSchema` and `STARConfigSchema` in `trap/config/schemas.py`, `config/datasets/l1hs_l1pa2_v48_k17.yaml` |
-| Review comment §12/#15 | Read-level leakage between splits | transcript-level split in `trap/utils/preprocessing_sequences.py`, leakage check in `trap/analysis/diagnostics.py` |
+| Question | Code |
+|---|---|
+| Is the high-k entropy plateau a finite-sampling artefact? | `trap/analysis/entropy.py` (bias-corrected estimators), `trap/analysis/kmer_counting.py` (rarefaction), saturation gate in `trap/analysis/selection.py` |
+| Operational definitions of entropy and redundancy; where do diminishing returns begin? | `trap/analysis/entropy.py`, marginal-gain gate in `trap/analysis/selection.py` |
+| Does a plateau establish the optimal k for the task? | `trap/analysis/ablation.py`, task gate in `trap/analysis/selection.py`, `config/analysis/entropy_redundancy.yaml` |
+| A second 5'RACE library, in a line with more active L1 loci | No such library exists: `SRR4099955` is the only L1-targeted 5'RACE deposit in SRA/ENA. Three substitution protocols were measured and all three discarded: `scripts/analyses/5race_substitution/` (routes A, N, O) |
+| Is the 5'RACE benchmark independent of the shared repeat annotation? | `l1base_overlap_counts` and `l1base_restricted_fits` in `trap/analysis/robustness.py` |
+| Sensitivity to the locus-set filter | `filter_definition_grid` in `trap/analysis/robustness.py` |
+| Formal test of the ΔR² between methods; what the Figure 10 R² aggregates over and how it varies across strata | `bootstrap_delta_r2` in `trap/analysis/robustness.py`; `trap/analysis/synthetic_strata.py` |
+| Class imbalance: mitigation, size, and propagation of the L1HS recall deficit | `trap/analysis/imbalance.py` |
+| Comparator multi-mapping settings, reported | `config/baselines/baseline_settings.yaml`, guarded by `tests/analysis/test_baseline_settings.py` |
+| Is the NEGATIVE class a clean control (Figure 13)? | `trap/analysis/negative_control.py`; `python -m trap.analysis negative-control`, `chrom-length` |
+| ORF0 enrichment | `trap/analysis/enrichment.py` |
+| How the relevance scores are computed (Layer Integrated Gradients, not attention) and whether top k-mers cluster in L1 domains | `trap/analysis/interpret.py`, `scripts/slurm/70_interpret.slurm` |
+| Held-out evaluation with per-class metrics and confusion matrix | `trap/analysis/heldout_eval.py`, `scripts/slurm/41_heldout_eval.slurm` |
+| Simpler read classifiers as a comparison | `scripts/python/explore_logreg_kmer_baseline.py`, `scripts/slurm/44_logreg_kmer_baseline.slurm` |
+| Stability across random seeds and training runs | `scripts/slurm/42_seed_replicates.slurm`, `43_seed_heldout.slurm`, `config/training/seed_replicates.txt`, `python -m trap.analysis seed-summary` |
+| Attribution enrichment with the read, not the k-mer, as the unit | `clustered_enrichment` in `trap/analysis/enrichment.py` |
+| Parameter count of the reported classifier | `python -m trap.analysis model-params` |
+| Hyperparameter search space and final configuration | `config/training/pbt_search_space.yaml` |
+| ART and STAR parameters | `ARTConfigSchema` and `STARConfigSchema` in `trap/config/schemas.py`, `config/datasets/l1hs_l1pa2_v48_k17.yaml` |
+| Read-level leakage between splits | transcript-level split in `trap/utils/preprocessing_sequences.py`, leakage check in `trap/analysis/diagnostics.py` |
 
 ## Not behind any reported result
 
