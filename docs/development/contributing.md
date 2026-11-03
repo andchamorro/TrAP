@@ -47,8 +47,17 @@ questions to the analyses that answer them lives in `docs/guides/manuscript_prov
 `docs/guides/manuscript_provenance.md` maps every manuscript table and figure to the code
 that produced it, valid at tag `v1.0.0`. A change that touches a file it names must keep
 the path resolvable (or record the move) and must not change any reported number. After
-editing a published notebook, re-execute it and compare every exported figure with the
-tagged version; a figure that is not byte- or pixel-identical blocks the change.
+editing a published notebook, execute it before and after the change in the same
+environment and compare every exported figure; a figure that is not byte-identical blocks
+the change. Compare against the tagged figures only within the toolchain that produced
+them: re-running the unchanged notebooks under a newer R and ggplot2 already re-renders
+about half of the PNGs, so a mismatch against the tag is not by itself a regression. PDFs
+differ by their embedded creation date; strip it before comparing.
+
+Tracked notebooks carry source only. Clear outputs with
+`jupyter nbconvert --clear-output --inplace notebooks/<name>.ipynb` before committing;
+`tests/test_notebooks_clean.py` enforces it. Figures are regenerated, not read back out
+of a notebook.
 `docs/guides/inventory.tsv` classifies every tracked file; refresh it with
 `python scripts/python/audit_repo.py audit` and validate it with `... check`.
 

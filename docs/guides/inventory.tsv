@@ -310,6 +310,7 @@ tests/scripts/test_divide_gff.py	SUPPORT	refs=1	keep	maintainer
 tests/scripts/test_make_supplementary_tables.py	SUPPORT	refs=1		
 tests/scripts/test_synthetic_abundance.py	SUPPORT	refs=0		
 tests/test_integration.py	SUPPORT	refs=0	keep	maintainer
+tests/test_notebooks_clean.py	SUPPORT	refs=1	keep; guards against stored notebook outputs	
 tests/test_r_plot_helpers.py	SUPPORT	refs=0		
 tests/test_smoke.py	SUPPORT	refs=0	keep	maintainer
 tests/utils/__init__.py	SUPPORT	refs=0	keep	maintainer
